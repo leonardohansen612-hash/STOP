@@ -2,8 +2,21 @@ import {db,gameRef,doc,setDoc,updateDoc,onSnapshot,collection,serverTimestamp,ru
 import {qs,esc,getTeamId,fmtTime} from './common.js';
 
 const teamId=getTeamId();
-let game=null,team=null,timerInt=null,lastAnswers={},currentCategoryIndex=0;
-const join=qs('#join'),waiting=qs('#waiting'),gameEl=qs('#game'),stopped=qs('#stopped');
+let game=null, team=null, timerInt=null;
+let answers={};
+let currentCategoryIndex=0;
+let renderedRound=null;
+let saveTimer=null;
+let flashedRound=0;
+
+const join=qs('#join');
+const waiting=qs('#waiting');
+const gameEl=qs('#game');
+const stopped=qs('#stopped');
+const answerInput=qs('#categoryAnswer');
+const backBtn=qs('#backBtn');
+const nextBtn=qs('#nextBtn');
+const stopBtn=qs('#stopBtn');
 
 function setStatus(s){
   qs('#statusText').textContent=s;
@@ -36,9 +49,7 @@ onSnapshot(collection(db,'games',gameRef.id,'teams'),snap=>{
 });
 
 onSnapshot(gameRef,snap=>{
-  const previousRound=game?.round;
   game=snap.exists()?snap.data():null;
-  if(game?.round && game.round!==previousRound) currentCategoryIndex=0;
   render();
 });
 
@@ -52,7 +63,7 @@ function render(){
   join.hidden=true;
   qs('#hello').textContent=`Equipe: ${team.name}`;
 
-  if(!game||game.status==='lobby'||game.status==='review'||game.status==='finished'){
+  if(!game || game.status==='lobby' || game.status==='review' || game.status==='finished'){
     waiting.hidden=false;
     gameEl.hidden=stopped.hidden=true;
     setStatus(game?.status==='review'?'Correção':'Aguardando');
@@ -81,18 +92,17 @@ function render(){
 }
 
 function renderRound(){
-  const cats=game.categories||[];
-  const currentRound=game.round||1;
   qs('#letter').textContent=game.letter||'?';
 
-  if(qs('#categoryCard').dataset.round!=currentRound){
-    qs('#categoryCard').dataset.round=currentRound;
-    lastAnswers=(team?.round===currentRound&&team.answers)||{};
+  const round=game.round||1;
+  if(renderedRound!==round){
+    renderedRound=round;
     currentCategoryIndex=0;
+    answers=(team?.round===round && team.answers) ? {...team.answers} : {};
   }
 
-  if(currentCategoryIndex>Math.max(0,cats.length-1)) currentCategoryIndex=Math.max(0,cats.length-1);
   renderCategory();
+
   clearInterval(timerInt);
   tick();
   timerInt=setInterval(tick,250);
@@ -102,76 +112,90 @@ function renderCategory(){
   const cats=game?.categories||[];
   if(!cats.length){
     qs('#categoryName').textContent='Sem categorias';
-    qs('#categoryProgress').textContent='';
-    qs('#categoryAnswer').value='';
-    qs('#nextBtn').hidden=true;
-    qs('#stopBtn').hidden=false;
+    qs('#categoryCounter').textContent='0 categorias';
+    answerInput.value='';
+    answerInput.disabled=true;
+    backBtn.hidden=true;
+    nextBtn.hidden=true;
+    stopBtn.hidden=true;
     return;
   }
 
+  currentCategoryIndex=Math.max(0,Math.min(currentCategoryIndex,cats.length-1));
   const cat=cats[currentCategoryIndex];
   const isLast=currentCategoryIndex===cats.length-1;
+
   qs('#categoryName').textContent=cat;
-  qs('#categoryProgress').textContent=`Categoria ${currentCategoryIndex+1} de ${cats.length}`;
-  qs('#categoryAnswer').value=lastAnswers[cat]||'';
-  qs('#prevBtn').hidden=currentCategoryIndex===0;
-  qs('#nextBtn').hidden=isLast;
-  qs('#stopBtn').hidden=!isLast;
-  qs('#nextBtn').textContent='PRÓXIMA →';
-  setTimeout(()=>qs('#categoryAnswer').focus(),30);
+  qs('#categoryCounter').textContent=`Categoria ${currentCategoryIndex+1} de ${cats.length}`;
+  qs('#categoryProgress').style.width=`${((currentCategoryIndex+1)/cats.length)*100}%`;
+
+  answerInput.disabled=false;
+  answerInput.value=answers[cat]||'';
+  answerInput.placeholder=`Resposta para ${cat}...`;
+
+  backBtn.hidden=currentCategoryIndex===0;
+  nextBtn.hidden=isLast;
+  stopBtn.hidden=!isLast;
+
+  setTimeout(()=>answerInput.focus(),0);
 }
 
 function captureCurrentAnswer(){
   const cats=game?.categories||[];
   const cat=cats[currentCategoryIndex];
   if(!cat) return;
-  lastAnswers[cat]=qs('#categoryAnswer').value.trim();
+  answers[cat]=answerInput.value.trim();
 }
 
+function queueSave(){
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(saveAnswers,150);
+}
+
+answerInput.addEventListener('input',()=>{
+  captureCurrentAnswer();
+  queueSave();
+});
+
+answerInput.addEventListener('keydown',async e=>{
+  if(e.key!=='Enter') return;
+  e.preventDefault();
+  if(stopBtn.hidden) await goNext();
+});
+
+async function goNext(){
+  const cats=game?.categories||[];
+  if(currentCategoryIndex>=cats.length-1) return;
+  captureCurrentAnswer();
+  await saveAnswers();
+  currentCategoryIndex++;
+  renderCategory();
+}
+
+async function goBack(){
+  if(currentCategoryIndex<=0) return;
+  captureCurrentAnswer();
+  await saveAnswers();
+  currentCategoryIndex--;
+  renderCategory();
+}
+
+nextBtn.addEventListener('click',goNext);
+backBtn.addEventListener('click',goBack);
+
 async function saveAnswers(){
-  if(!game||game.status!=='playing') return;
+  if(!game || game.status!=='playing') return;
   captureCurrentAnswer();
   await updateDoc(doc(db,'games',gameRef.id,'teams',teamId),{
-    answers:lastAnswers,
+    answers,
     round:game.round,
     updatedAt:serverTimestamp()
   }).catch(()=>{});
 }
 
-let saveTimer;
-qs('#categoryAnswer').addEventListener('input',()=>{
-  captureCurrentAnswer();
-  clearTimeout(saveTimer);
-  saveTimer=setTimeout(saveAnswers,180);
-});
-
-qs('#categoryAnswer').addEventListener('keydown',async e=>{
-  if(e.key==='Enter'){
-    e.preventDefault();
-    const cats=game?.categories||[];
-    if(currentCategoryIndex<cats.length-1){
-      await saveAnswers();
-      currentCategoryIndex++;
-      renderCategory();
-    }
-  }
-});
-
-qs('#nextBtn').addEventListener('click',async()=>{
+stopBtn.addEventListener('click',async()=>{
   await saveAnswers();
-  const cats=game?.categories||[];
-  if(currentCategoryIndex<cats.length-1){
-    currentCategoryIndex++;
-    renderCategory();
-  }
-});
-
-qs('#prevBtn').addEventListener('click',async()=>{
-  await saveAnswers();
-  if(currentCategoryIndex>0){
-    currentCategoryIndex--;
-    renderCategory();
-  }
+  await requestStop(team.name);
 });
 
 function tick(){
@@ -182,13 +206,8 @@ function tick(){
   const end=game.endsAt.toMillis?game.endsAt.toMillis():game.endsAt;
   const ms=end-Date.now();
   qs('#timer').textContent=fmtTime(ms);
-  if(ms<=0&&game.status==='playing') requestStop('TEMPO');
+  if(ms<=0 && game.status==='playing') requestStop('TEMPO');
 }
-
-qs('#stopBtn').addEventListener('click',async()=>{
-  await saveAnswers();
-  await requestStop(team.name);
-});
 
 async function requestStop(by){
   try{
@@ -204,12 +223,13 @@ async function requestStop(by){
         stopAt:serverTimestamp()
       });
     });
-  }catch(e){console.error(e)}
+  }catch(e){
+    console.error(e);
+  }
 }
 
-let flashedRound=0;
 function showFlash(who){
-  if(!game||flashedRound===game.round) return;
+  if(!game || flashedRound===game.round) return;
   flashedRound=game.round;
   qs('#flashWho').textContent=who;
   qs('#flash').classList.add('show');
