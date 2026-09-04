@@ -1,13 +1,104 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tex Stop TV</title><link rel="stylesheet" href="styles.css"><style>body{overflow-x:hidden}.tvcenter{text-align:center}.tv-logo{height:78px}.tv-mascot{max-height:330px}.tv-rank{font-size:clamp(24px,4vw,42px)}</style></head><body><div class="wrap">
-<div class="topbar"><div class="brand"><img class="tv-logo" src="assets/logo-texpub.png"><div><div class="title">TEX STOP</div><div class="subtitle">Pensou, escreveu, gritou STOP!</div></div></div><span class="status"><span class="dot" id="dot"></span><span id="statusText">Aguardando</span></span></div>
-<section id="lobby" class="tv-lobby panel">
-  <div class="tv-join-copy"><h1 class="tv-join-title">ENTRE NO JOGO</h1><p class="muted">Aponte a câmera do celular para o QR Code, entre com o nome da sua equipe e aguarde a rodada começar.</p><div class="teams" id="teamsLobby"></div></div>
-  <div class="qr-panel"><div id="qrcode"></div><div class="qr-caption">ESCANEIE PARA JOGAR</div><div id="joinUrl" class="qr-url"></div></div>
-  <img class="mascot tv-mascot" src="assets/texuguinha.png">
-</section>
-<section id="playing" class="grid2" hidden><div class="panel tvcenter"><div class="muted">LETRA DA RODADA</div><div class="big-letter" id="letter">?</div><div class="timer" id="timer">--:--</div></div><div class="panel"><h2>Categorias</h2><div id="cats" class="grid"></div></div></section>
-<section id="review" class="panel" hidden><h1>RESPOSTAS</h1><div id="reviewTv"></div></section>
-<section id="ranking" class="panel" style="margin-top:18px"><h2>🏆 RANKING</h2><table class="scoreboard"><tbody id="rankBody"></tbody></table></section></div>
-<div class="flash" id="flash"><div><div class="huge">STOP!</div><div class="who" id="flashWho"></div></div></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script type="module" src="js/tv.js"></script></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Tex Stop TV</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="tv-page">
+  <main class="tv-shell">
+    <header class="tv-header">
+      <div class="tv-brand">
+        <img src="assets/logo-texpub.png" alt="Tex Pub">
+        <div>
+          <div class="tv-title">TEX STOP</div>
+          <div class="tv-subtitle">Pensou, escreveu, gritou STOP!</div>
+        </div>
+      </div>
+      <div class="tv-status">
+        <span class="dot" id="dot"></span>
+        <span id="statusText">Aguardando</span>
+      </div>
+    </header>
+
+    <section id="lobby" class="tv-screen">
+      <div class="tv-lobby-main">
+        <div class="tv-qr-card">
+          <div class="tv-kicker">ENTRE NO JOGO</div>
+          <div id="qrcode" class="tv-qrcode"></div>
+          <div class="tv-scan">APONTE A CÂMERA DO CELULAR</div>
+          <div id="joinUrl" class="tv-url"></div>
+        </div>
+
+        <div class="tv-lobby-center">
+          <img class="tv-mascot" src="assets/texuguinha.png" alt="Texuguinha">
+          <div class="tv-lobby-copy">
+            <h1>ESCANEIE.<br>ENTRE.<br><span>JOGUE!</span></h1>
+            <p>Digite o nome da sua equipe e aguarde a rodada começar.</p>
+          </div>
+        </div>
+
+        <div class="tv-teams-card">
+          <div class="tv-section-title">
+            <span>👥 EQUIPES NO JOGO</span>
+            <strong id="teamCount">0</strong>
+          </div>
+          <div class="tv-teams" id="teamsLobby"></div>
+        </div>
+      </div>
+
+      <div class="tv-ranking-strip">
+        <div class="tv-ranking-title">🏆 RANKING</div>
+        <div id="rankCards" class="tv-rank-cards"></div>
+      </div>
+    </section>
+
+    <section id="playing" class="tv-screen" hidden>
+      <div class="tv-playing-grid">
+        <div class="tv-round-card tv-letter-card">
+          <div class="tv-kicker">LETRA DA RODADA</div>
+          <div class="tv-big-letter" id="letter">?</div>
+        </div>
+
+        <div class="tv-round-card tv-timer-card">
+          <div class="tv-kicker">TEMPO</div>
+          <div class="tv-big-timer" id="timer">--:--</div>
+          <div class="tv-playing-note">Quando uma equipe pedir STOP, todos param.</div>
+        </div>
+
+        <div class="tv-round-card tv-categories-card">
+          <div class="tv-kicker">CATEGORIAS</div>
+          <div id="cats" class="tv-cats"></div>
+        </div>
+      </div>
+
+      <div class="tv-ranking-strip compact">
+        <div class="tv-ranking-title">🏆 RANKING</div>
+        <div id="rankCardsPlaying" class="tv-rank-cards"></div>
+      </div>
+    </section>
+
+    <section id="review" class="tv-screen" hidden>
+      <div class="tv-review-head">
+        <div>
+          <div class="tv-kicker">CORREÇÃO DA RODADA</div>
+          <h1>RESPOSTAS</h1>
+        </div>
+        <div class="tv-review-round">Rodada <span id="reviewRound">-</span></div>
+      </div>
+      <div id="reviewTv" class="tv-review-grid"></div>
+    </section>
+  </main>
+
+  <div class="flash" id="flash">
+    <div>
+      <div class="huge">STOP!</div>
+      <div class="who" id="flashWho"></div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script type="module" src="js/tv.js"></script>
+</body>
+</html>
