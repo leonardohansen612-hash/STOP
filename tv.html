@@ -1,8 +1,13 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tex Stop TV</title><link rel="stylesheet" href="styles.css"><style>body{overflow-x:hidden}.tvcenter{text-align:center}.tv-logo{height:78px}.tv-mascot{max-height:360px}.tv-rank{font-size:clamp(24px,4vw,42px)}</style></head><body><div class="wrap">
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tex Stop TV</title><link rel="stylesheet" href="styles.css"><style>body{overflow-x:hidden}.tvcenter{text-align:center}.tv-logo{height:78px}.tv-mascot{max-height:330px}.tv-rank{font-size:clamp(24px,4vw,42px)}</style></head><body><div class="wrap">
 <div class="topbar"><div class="brand"><img class="tv-logo" src="assets/logo-texpub.png"><div><div class="title">TEX STOP</div><div class="subtitle">Pensou, escreveu, gritou STOP!</div></div></div><span class="status"><span class="dot" id="dot"></span><span id="statusText">Aguardando</span></span></div>
-<section id="lobby" class="hero panel"><div><h1 style="font-size:clamp(38px,6vw,78px);margin:.2em 0">ENTRE NO JOGO</h1><p class="muted">Acesse o link do jogo no celular e entre com o nome da sua equipe.</p><div class="teams" id="teamsLobby"></div></div><img class="mascot tv-mascot" src="assets/texuguinha.png"></section>
+<section id="lobby" class="tv-lobby panel">
+  <div class="tv-join-copy"><h1 class="tv-join-title">ENTRE NO JOGO</h1><p class="muted">Aponte a câmera do celular para o QR Code, entre com o nome da sua equipe e aguarde a rodada começar.</p><div class="teams" id="teamsLobby"></div></div>
+  <div class="qr-panel"><div id="qrcode"></div><div class="qr-caption">ESCANEIE PARA JOGAR</div><div id="joinUrl" class="qr-url"></div></div>
+  <img class="mascot tv-mascot" src="assets/texuguinha.png">
+</section>
 <section id="playing" class="grid2" hidden><div class="panel tvcenter"><div class="muted">LETRA DA RODADA</div><div class="big-letter" id="letter">?</div><div class="timer" id="timer">--:--</div></div><div class="panel"><h2>Categorias</h2><div id="cats" class="grid"></div></div></section>
 <section id="review" class="panel" hidden><h1>RESPOSTAS</h1><div id="reviewTv"></div></section>
 <section id="ranking" class="panel" style="margin-top:18px"><h2>🏆 RANKING</h2><table class="scoreboard"><tbody id="rankBody"></tbody></table></section></div>
 <div class="flash" id="flash"><div><div class="huge">STOP!</div><div class="who" id="flashWho"></div></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script type="module" src="js/tv.js"></script></body></html>
