@@ -457,3 +457,113 @@
   .tv-page{overflow:auto}
   .tv-page .tv-shell{height:auto;min-height:100vh}
 }
+
+
+/* ===== V2.0 - Correção automática ===== */
+.auto-help{margin:10px 0 0;line-height:1.45}
+.correction-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.correction-head h2{margin-bottom:4px}
+.auto-badge{
+  flex:0 0 auto;
+  padding:8px 12px;
+  border-radius:999px;
+  border:1px solid rgba(181,109,255,.5);
+  background:rgba(143,54,255,.14);
+  color:var(--purple2);
+  font-weight:1000;
+  letter-spacing:.04em;
+}
+.review-summary{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:10px;
+  margin:16px 0;
+}
+.review-total-card{
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  align-items:center;
+  gap:10px;
+  padding:12px;
+  border-radius:12px;
+  background:#111117;
+  border:1px solid var(--line);
+}
+.review-total-pos{font-weight:1000;color:var(--purple2)}
+.review-total-name{
+  min-width:0;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  font-weight:900;
+}
+.review-total-card strong{white-space:nowrap}
+.review-category{margin-bottom:12px}
+.review-cat-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:8px;
+}
+.review-cat-head h3{margin:0}
+.auto-review-row{
+  grid-template-columns:minmax(120px,.8fr) minmax(180px,1.4fr) minmax(180px,.9fr);
+  align-items:center;
+}
+.review-answer{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width:0;
+}
+.auto-reason{
+  width:max-content;
+  max-width:100%;
+  padding:3px 8px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:900;
+}
+.auto-valid{
+  background:rgba(46,204,113,.12);
+  color:#75e7a7;
+  border:1px solid rgba(46,204,113,.24);
+}
+.auto-repeat{
+  background:rgba(255,208,77,.11);
+  color:#ffe18a;
+  border:1px solid rgba(255,208,77,.24);
+}
+.auto-zero{
+  background:rgba(255,84,112,.10);
+  color:#ff8ca0;
+  border:1px solid rgba(255,84,112,.24);
+}
+.review-actions{
+  display:flex;
+  gap:10px;
+  justify-content:flex-end;
+  margin-top:14px;
+}
+.tv-review-row{
+  grid-template-columns:31% 1fr auto!important;
+  align-items:center;
+}
+.tv-review-score{
+  color:var(--purple2);
+  font-size:1vw;
+}
+
+@media(max-width:760px){
+  .auto-review-row{
+    grid-template-columns:1fr;
+    gap:8px;
+  }
+  .review-actions{
+    flex-direction:column;
+  }
+  .review-actions .btn{
+    width:100%;
+  }
+}

@@ -1,6 +1,36 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tex Stop Admin</title><link rel="stylesheet" href="styles.css"></head><body><div class="wrap">
-<div class="topbar"><div class="brand"><img src="assets/logo-texpub.png"><div><div class="title">TEX STOP</div><div class="subtitle">Painel do apresentador</div></div></div><a class="btn secondary" href="tv.html" target="_blank" style="text-decoration:none">ABRIR TV</a></div>
-<div class="grid2"><section class="panel"><h2>Configuração</h2><div class="grid"><div class="field"><label>Duração da rodada (segundos)</label><input id="duration" type="number" min="30" max="300" value="90"></div><div class="field"><label>Categorias — uma por linha</label><textarea id="categories" rows="10">Nome
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Tex Stop Admin</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <img src="assets/logo-texpub.png" alt="Tex Pub">
+      <div>
+        <div class="title">TEX STOP</div>
+        <div class="subtitle">Painel do apresentador</div>
+      </div>
+    </div>
+    <a class="btn secondary" href="tv.html" target="_blank" style="text-decoration:none">ABRIR TV</a>
+  </div>
+
+  <div class="grid2">
+    <section class="panel">
+      <h2>Configuração</h2>
+      <div class="grid">
+        <div class="field">
+          <label>Duração da rodada (segundos)</label>
+          <input id="duration" type="number" min="30" max="300" value="90">
+        </div>
+
+        <div class="field">
+          <label>Categorias — uma por linha</label>
+          <textarea id="categories" rows="10">Nome
 Animal
 Cidade
 Objeto
@@ -9,8 +39,67 @@ Bebida
 Marca
 Profissão
 País
-Filme ou Série</textarea></div><div class="grid2"><button id="start" class="btn good">INICIAR RODADA</button><button id="reset" class="btn danger">ZERAR PARTIDA</button></div></div></section>
-<section class="panel"><h2>Estado da partida</h2><div class="grid3"><div class="category-card"><div class="muted">Rodada</div><div class="title" id="round">0</div></div><div class="category-card"><div class="muted">Letra</div><div class="title" id="letter">-</div></div><div class="category-card"><div class="muted">Status</div><div style="font-size:24px;font-weight:1000" id="status">Lobby</div></div></div><div style="height:14px"></div><button id="review" class="btn secondary" disabled>IR PARA CORREÇÃO</button></section></div>
-<section class="panel" style="margin-top:18px"><h2>Equipes</h2><div id="teams" class="teams"></div></section>
-<section class="panel" style="margin-top:18px"><h2>Correção</h2><p class="muted">Valide as respostas. O sistema sugere 10 pontos para únicas, 5 para repetidas e 0 para vazias/fora da letra.</p><div id="reviewArea"></div><button id="finishReview" class="btn good" hidden>SALVAR PONTOS E VOLTAR AO LOBBY</button></section>
-</div><script type="module" src="js/admin.js"></script></body></html>
+Filme ou Série</textarea>
+        </div>
+
+        <div class="grid2">
+          <button id="start" class="btn good">INICIAR RODADA</button>
+          <button id="reset" class="btn danger">ZERAR PARTIDA</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Estado da partida</h2>
+      <div class="grid3">
+        <div class="category-card">
+          <div class="muted">Rodada</div>
+          <div class="title" id="round">0</div>
+        </div>
+        <div class="category-card">
+          <div class="muted">Letra</div>
+          <div class="title" id="letter">-</div>
+        </div>
+        <div class="category-card">
+          <div class="muted">Status</div>
+          <div style="font-size:24px;font-weight:1000" id="status">Lobby</div>
+        </div>
+      </div>
+
+      <div style="height:14px"></div>
+      <button id="review" class="btn secondary" disabled>⚡ CORRIGIR AUTOMATICAMENTE</button>
+      <p class="muted auto-help">
+        Após o STOP, o sistema calcula automaticamente: 0 para vazia/fora da letra, 5 para repetida e 10 para única.
+      </p>
+    </section>
+  </div>
+
+  <section class="panel" style="margin-top:18px">
+    <h2>Equipes</h2>
+    <div id="teams" class="teams"></div>
+  </section>
+
+  <section id="correctionPanel" class="panel" style="margin-top:18px">
+    <div class="correction-head">
+      <div>
+        <h2>Correção V2</h2>
+        <p class="muted">
+          A pontuação abaixo é calculada automaticamente. Antes de aplicar, você ainda pode corrigir manualmente qualquer resposta.
+        </p>
+      </div>
+      <div id="autoBadge" class="auto-badge" hidden>⚡ AUTO</div>
+    </div>
+
+    <div id="reviewSummary" class="review-summary" hidden></div>
+    <div id="reviewArea"></div>
+
+    <div class="review-actions">
+      <button id="recalcReview" class="btn secondary" hidden>↻ RECALCULAR</button>
+      <button id="finishReview" class="btn good" hidden>APLICAR PONTOS E VOLTAR AO LOBBY</button>
+    </div>
+  </section>
+</div>
+
+<script type="module" src="js/admin.js"></script>
+</body>
+</html>
