@@ -1,0 +1,37 @@
+STOP V2.2 — VISUAL ROXO PREMIUM
+
+Substitua SOMENTE:
+- game.html
+- styles.css
+- tv.html
+
+Não mexe em:
+- Firebase
+- IA
+- pontuação
+- respostas
+- admin
+- server.js
+- api/ai-review.js
+
+Melhorias visuais:
+- identidade roxa Tex Pub mais forte
+- fundo com luzes/grade e movimento suave
+- tela de espera com Texuguinha animada
+- cards com efeito glass / glow
+- letra e timer mais impactantes
+- barra de progresso iluminada
+- campo de resposta premium
+- botão STOP pulsante
+- TV 55" com QR iluminado, mascote flutuando, ranking e categorias animadas
+- tela de correção com entrada suave
+- respeita prefers-reduced-motion
+
+IMPORTANTE:
+O tv.html já vem com o CSS embutido para evitar o problema anterior de a TV abrir sem estilo no Render.
+
+PASSOS:
+1. Substitua os 3 arquivos na raiz do GitHub.
+2. Commit.
+3. Aguarde o Auto Deploy do Render.
+4. No celular e na TV, use Ctrl+F5 / recarregamento forçado se necessário.
