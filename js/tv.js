@@ -1,5 +1,58 @@
-import {db,gameRef,onSnapshot,collection} from './firebase.js';import {qs,esc,fmtTime} from './common.js';let game=null,teams=[],timerInt=null,lastFlash=0;
-onSnapshot(gameRef,s=>{game=s.exists()?s.data():null;render()});onSnapshot(collection(db,'games',gameRef.id,'teams'),s=>{teams=s.docs.map(d=>({id:d.id,...d.data()}));render()});
-function render(){const status=game?.status||'lobby';qs('#statusText').textContent=status==='playing'?'Jogando':status==='stopped'?'STOP':status==='review'?'Correção':'Aguardando';qs('#dot').className='dot '+(status==='playing'?'live':status==='stopped'?'stop':'');qs('#lobby').hidden=status!=='lobby';qs('#playing').hidden=status!=='playing';qs('#review').hidden=status!=='review';qs('#teamsLobby').innerHTML=teams.map(t=>`<div class="team">${esc(t.name)}</div>`).join('');qs('#rankBody').innerHTML=teams.sort((a,b)=>(b.score||0)-(a.score||0)).map((t,i)=>`<tr><td class="${i===0?'rank1':''}">${i+1}º</td><td>${esc(t.name)}</td><td><b>${t.score||0}</b> pts</td></tr>`).join('');if(status==='playing'){qs('#letter').textContent=game.letter||'?';qs('#cats').innerHTML=(game.categories||[]).map(c=>`<div class="category-card">${esc(c)}</div>`).join('');clearInterval(timerInt);tick();timerInt=setInterval(tick,250)}if(status==='stopped'&&lastFlash!==game.round){lastFlash=game.round;qs('#flashWho').textContent=game.stopByName||'';qs('#flash').classList.add('show');setTimeout(()=>qs('#flash').classList.remove('show'),2200)}if(status==='review')renderReview();}
-function tick(){if(!game?.endsAt)return;const end=game.endsAt.toMillis?game.endsAt.toMillis():game.endsAt;qs('#timer').textContent=fmtTime(end-Date.now())}
-function renderReview(){let html='';(game.categories||[]).forEach(c=>{html+=`<div class="category-card" style="margin-bottom:12px"><h2>${esc(c)}</h2>`;teams.forEach(t=>html+=`<div class="review-row"><b>${esc(t.name)}</b><div>${esc((t.round===game.round&&t.answers?.[c])||'—')}</div><div></div></div>`);html+='</div>'});qs('#reviewTv').innerHTML=html;}
+import {db,gameRef,onSnapshot,collection} from './firebase.js';
+import {qs,esc,fmtTime} from './common.js';
+let game=null,teams=[],timerInt=null,lastFlash=0;
+
+function buildQr(){
+  const joinUrl=new URL('./',window.location.href).href;
+  qs('#joinUrl').textContent=joinUrl.replace(/^https?:\/\//,'').replace(/\/$/,'');
+  const box=qs('#qrcode');
+  box.innerHTML='';
+  if(window.QRCode){
+    new QRCode(box,{text:joinUrl,width:220,height:220,correctLevel:QRCode.CorrectLevel.H});
+  }else{
+    box.innerHTML='<div class="muted">QR Code indisponível. Use o endereço abaixo.</div>';
+  }
+}
+buildQr();
+
+onSnapshot(gameRef,s=>{game=s.exists()?s.data():null;render()});
+onSnapshot(collection(db,'games',gameRef.id,'teams'),s=>{teams=s.docs.map(d=>({id:d.id,...d.data()}));render()});
+
+function render(){
+  const status=game?.status||'lobby';
+  qs('#statusText').textContent=status==='playing'?'Jogando':status==='stopped'?'STOP':status==='review'?'Correção':'Aguardando';
+  qs('#dot').className='dot '+(status==='playing'?'live':status==='stopped'?'stop':'');
+  qs('#lobby').hidden=status!=='lobby';
+  qs('#playing').hidden=status!=='playing';
+  qs('#review').hidden=status!=='review';
+  qs('#teamsLobby').innerHTML=teams.map(t=>`<div class="team">${esc(t.name)}</div>`).join('');
+  qs('#rankBody').innerHTML=[...teams].sort((a,b)=>(b.score||0)-(a.score||0)).map((t,i)=>`<tr><td class="${i===0?'rank1':''}">${i+1}º</td><td>${esc(t.name)}</td><td><b>${t.score||0}</b> pts</td></tr>`).join('');
+  if(status==='playing'){
+    qs('#letter').textContent=game.letter||'?';
+    qs('#cats').innerHTML=(game.categories||[]).map(c=>`<div class="category-card">${esc(c)}</div>`).join('');
+    clearInterval(timerInt);tick();timerInt=setInterval(tick,250);
+  }else clearInterval(timerInt);
+  if(status==='stopped'&&lastFlash!==game.round){
+    lastFlash=game.round;
+    qs('#flashWho').textContent=game.stopByName||'';
+    qs('#flash').classList.add('show');
+    setTimeout(()=>qs('#flash').classList.remove('show'),2200);
+  }
+  if(status==='review') renderReview();
+}
+
+function tick(){
+  if(!game?.endsAt)return;
+  const end=game.endsAt.toMillis?game.endsAt.toMillis():game.endsAt;
+  qs('#timer').textContent=fmtTime(end-Date.now());
+}
+
+function renderReview(){
+  let html='';
+  (game.categories||[]).forEach(c=>{
+    html+=`<div class="category-card" style="margin-bottom:12px"><h2>${esc(c)}</h2>`;
+    teams.forEach(t=>html+=`<div class="review-row"><b>${esc(t.name)}</b><div>${esc((t.round===game.round&&t.answers?.[c])||'—')}</div><div></div></div>`);
+    html+='</div>';
+  });
+  qs('#reviewTv').innerHTML=html;
+}
