@@ -41,3 +41,17 @@
   .step-actions{flex-direction:column}
   .step-actions .btn,.step-actions .stopbtn{width:100%}
 }
+
+
+/* ===== V1.5 - cadastro separado do jogo ===== */
+.join-only{max-width:900px;margin:0 auto}
+.game-page{max-width:700px}
+.game-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}
+.team-name-game{font-size:clamp(24px,7vw,40px);font-weight:1000;line-height:1.05;word-break:break-word}
+.waiting-game{text-align:center;padding:34px 20px}
+@media(max-width:760px){
+  .game-header{padding:14px}
+  .game-header .status{flex-shrink:0}
+  .join-only{display:grid!important;grid-template-columns:1fr!important}
+  .join-only .mascot{max-height:260px;margin:0 auto}
+}

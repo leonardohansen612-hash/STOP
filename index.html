@@ -18,89 +18,26 @@
     </div>
     <span class="status">
       <span class="dot" id="dot"></span>
-      <span id="statusText">Conectando...</span>
+      <span id="statusText">Pronto</span>
     </span>
   </div>
 
-  <div class="quick-links">
-    <a class="btn secondary" href="admin.html" target="_blank" rel="noopener">🎮 PAINEL ADMIN</a>
-    <a class="btn secondary" href="tv.html" target="_blank" rel="noopener">📺 TELA DA TV</a>
-  </div>
-
-  <section id="join" class="hero panel">
+  <section class="hero panel join-only">
     <div>
       <h2>Entre na partida</h2>
-      <p class="muted">Digite o nome da equipe. Quando o admin iniciar, a rodada aparece automaticamente.</p>
+      <p class="muted">Digite o nome da sua equipe. Depois você será levado para a tela do jogo.</p>
       <form id="joinForm" class="grid">
         <div class="field">
-          <label>Nome da equipe</label>
-          <input id="teamName" maxlength="28" required placeholder="Ex.: Texugos Atômicos">
+          <label for="teamName">Nome da equipe</label>
+          <input id="teamName" maxlength="28" required placeholder="Ex.: Texugos Atômicos" autocomplete="off">
         </div>
         <button class="btn" type="submit">ENTRAR NO JOGO</button>
       </form>
     </div>
     <img class="mascot" src="assets/texuguinha.png" alt="Texuguinha jogando Stop">
   </section>
-
-  <section id="waiting" class="panel" hidden>
-    <h2 id="hello"></h2>
-    <p class="muted">Você está na partida. Aguarde o início da rodada.</p>
-    <div class="teams" id="teams"></div>
-  </section>
-
-  <section id="game" hidden>
-    <div class="mobile-game-shell">
-      <div class="round-top panel">
-        <div class="letter-box">
-          <span class="mini-label">LETRA</span>
-          <strong class="round-letter" id="letter">?</strong>
-        </div>
-        <div class="timer-box">
-          <span class="mini-label">TEMPO</span>
-          <strong class="round-timer" id="timer">--:--</strong>
-        </div>
-      </div>
-
-      <div class="panel category-step">
-        <div class="step-progress">
-          <span id="categoryCounter">Categoria 1 de 10</span>
-          <div class="progress-track"><div id="categoryProgress" class="progress-fill"></div></div>
-        </div>
-
-        <div class="current-category" id="categoryName">Nome</div>
-
-        <label class="sr-only" for="categoryAnswer">Sua resposta</label>
-        <input
-          id="categoryAnswer"
-          class="single-answer"
-          maxlength="45"
-          autocomplete="off"
-          placeholder="Digite sua resposta..."
-        >
-
-        <div class="step-actions">
-          <button id="backBtn" class="btn secondary" type="button">← VOLTAR</button>
-          <button id="nextBtn" class="btn" type="button">AVANÇAR →</button>
-          <button id="stopBtn" class="stopbtn" type="button" hidden>🛑 STOP!</button>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="stopped" class="panel" hidden>
-    <h2>Rodada encerrada!</h2>
-    <p id="stopMessage" class="muted"></p>
-    <p>Suas respostas foram salvas. Aguarde a correção na TV.</p>
-  </section>
 </div>
 
-<div class="flash" id="flash">
-  <div>
-    <div class="huge">STOP!</div>
-    <div class="who" id="flashWho"></div>
-  </div>
-</div>
-
-<script type="module" src="js/player.js"></script>
+<script type="module" src="js/join.js"></script>
 </body>
 </html>

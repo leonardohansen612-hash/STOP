@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Tex Stop - Jogo</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap game-page">
+  <div class="game-header panel">
+    <div>
+      <div class="mini-label">EQUIPE</div>
+      <div id="teamDisplay" class="team-name-game">...</div>
+    </div>
+    <span class="status">
+      <span class="dot" id="dot"></span>
+      <span id="statusText">Conectando...</span>
+    </span>
+  </div>
+
+  <section id="waiting" class="panel waiting-game">
+    <h2>Você está no jogo!</h2>
+    <p class="muted">Aguarde o administrador iniciar a próxima rodada.</p>
+  </section>
+
+  <section id="game" hidden>
+    <div class="mobile-game-shell">
+      <div class="round-top panel">
+        <div class="letter-box">
+          <span class="mini-label">LETRA</span>
+          <strong class="round-letter" id="letter">?</strong>
+        </div>
+        <div class="timer-box">
+          <span class="mini-label">TEMPO</span>
+          <strong class="round-timer" id="timer">--:--</strong>
+        </div>
+      </div>
+
+      <div class="panel category-step">
+        <div class="step-progress">
+          <span id="categoryCounter">Categoria 1 de 10</span>
+          <div class="progress-track"><div id="categoryProgress" class="progress-fill"></div></div>
+        </div>
+
+        <div class="current-category" id="categoryName">Nome</div>
+
+        <label class="sr-only" for="categoryAnswer">Sua resposta</label>
+        <input id="categoryAnswer" class="single-answer" maxlength="45" autocomplete="off" placeholder="Digite sua resposta...">
+
+        <div class="step-actions">
+          <button id="backBtn" class="btn secondary" type="button">← VOLTAR</button>
+          <button id="nextBtn" class="btn" type="button">AVANÇAR →</button>
+          <button id="stopBtn" class="stopbtn" type="button" hidden>🛑 STOP!</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="stopped" class="panel" hidden>
+    <h2>Rodada encerrada!</h2>
+    <p id="stopMessage" class="muted"></p>
+    <p>Suas respostas foram salvas. Aguarde a correção.</p>
+  </section>
+</div>
+
+<div class="flash" id="flash">
+  <div>
+    <div class="huge">STOP!</div>
+    <div class="who" id="flashWho"></div>
+  </div>
+</div>
+
+<script type="module" src="js/player.js"></script>
+</body>
+</html>
