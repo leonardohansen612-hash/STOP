@@ -55,3 +55,11 @@
   .join-only{display:grid!important;grid-template-columns:1fr!important}
   .join-only .mascot{max-height:260px;margin:0 auto}
 }
+
+
+/* ===== V1.6 - acessos Admin e TV restaurados ===== */
+.game-links{margin-top:-2px;margin-bottom:14px}
+@media(max-width:760px){
+  .quick-links{display:flex!important}
+  .quick-links .btn{flex:1;min-width:0;font-size:13px;padding:11px 10px}
+}
