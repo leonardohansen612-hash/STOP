@@ -1,4 +1,4 @@
-export const DEFAULT_CATEGORIES=["Nome","Animal","Cidade","Objeto","Comida","Bebida","Marca"];
+export const DEFAULT_CATEGORIES=["Nome","Animal","Cidade","Objeto","Comida","Bebida","Marca","Profissão","País","Filme ou Série"];
 export const LETTERS="ABCDEFGHILMNOPRSTUV".split("");
 export function qs(s){return document.querySelector(s)}
 export function qsa(s){return [...document.querySelectorAll(s)]}
