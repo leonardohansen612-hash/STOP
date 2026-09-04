@@ -117,17 +117,27 @@ function tick(){
 function renderReview(){
   qs('#reviewRound').textContent=game?.round||'-';
   let html='';
+  const reviewScores=game?.reviewScores||{};
+
   (game.categories||[]).forEach((c,idx)=>{
     html+=`<div class="tv-review-card">
       <div class="tv-review-cat"><span>${idx+1}</span>${esc(c)}</div>
       <div class="tv-review-answers">`;
+
     teams.forEach(t=>{
+      const key=`${t.id}|${c}`;
+      const answer=(t.round===game.round&&t.answers?.[c])||'—';
+      const score=reviewScores[key];
+
       html+=`<div class="tv-review-row">
         <b>${esc(t.name||'Equipe')}</b>
-        <span>${esc((t.round===game.round&&t.answers?.[c])||'—')}</span>
+        <span>${esc(answer)}</span>
+        ${score!==undefined?`<strong class="tv-review-score">+${score}</strong>`:''}
       </div>`;
     });
+
     html+='</div></div>';
   });
+
   qs('#reviewTv').innerHTML=html;
 }
