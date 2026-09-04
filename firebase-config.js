@@ -1,12 +1,11 @@
-// Cole aqui as credenciais do seu projeto Firebase.
-// Firebase Console > Configurações do projeto > Seus apps > SDK setup and configuration
+// Configuração Firebase do Tex STOP
 export const firebaseConfig = {
-  apiKey: "COLE_AQUI",
-  authDomain: "COLE_AQUI.firebaseapp.com",
-  projectId: "COLE_AQUI",
-  storageBucket: "COLE_AQUI.firebasestorage.app",
-  messagingSenderId: "COLE_AQUI",
-  appId: "COLE_AQUI"
+  apiKey: "AIzaSyCFhN8vEXR-FNW-T5U_iqxe0Th0Dc9Lm9M",
+  authDomain: "tex-stop.firebaseapp.com",
+  projectId: "tex-stop",
+  storageBucket: "tex-stop.firebasestorage.app",
+  messagingSenderId: "459743348997",
+  appId: "1:459743348997:web:a8804751e789836eb8ef6c"
 };
 
 export const GAME_ID = "tex-stop-main";
