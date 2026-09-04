@@ -567,3 +567,54 @@
     width:100%;
   }
 }
+
+
+/* ===== V2.1 - IA na correção ===== */
+.ai-status{
+  margin:14px 0;
+  padding:12px 14px;
+  border-radius:12px;
+  border:1px solid var(--line);
+  font-weight:800;
+  line-height:1.4;
+}
+.ai-status.loading{
+  background:rgba(143,54,255,.10);
+  border-color:rgba(143,54,255,.30);
+  color:#d7b7ff;
+}
+.ai-status.ok{
+  background:rgba(46,204,113,.09);
+  border-color:rgba(46,204,113,.25);
+  color:#8cebb6;
+}
+.ai-status.warning{
+  background:rgba(255,208,77,.09);
+  border-color:rgba(255,208,77,.28);
+  color:#ffe18a;
+}
+.ai-warning{
+  background:rgba(255,208,77,.10);
+  color:#ffe18a;
+  border:1px solid rgba(255,208,77,.28);
+}
+.needs-review{
+  border-left:4px solid #ffd04d;
+  padding-left:10px;
+}
+.review-team{
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+}
+.review-flag{
+  width:max-content;
+  padding:3px 7px;
+  border-radius:999px;
+  background:rgba(255,208,77,.12);
+  border:1px solid rgba(255,208,77,.30);
+  color:#ffe18a;
+  font-size:10px;
+  font-weight:1000;
+  letter-spacing:.05em;
+}
