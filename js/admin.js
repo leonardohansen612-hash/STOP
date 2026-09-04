@@ -3,10 +3,13 @@ import {
 } from './firebase.js';
 import {qs,esc,norm,randomLetter,DEFAULT_CATEGORIES} from './common.js';
 
+const AI_CONFIDENCE_AUTO = 0.90;
+
 let game={status:'lobby',round:0};
 let teams=[];
 let scoresDraft={};
-let autoTotals={};
+let aiResults={};
+let reviewBuiltForRound=null;
 
 await setDoc(gameRef,{status:'lobby',round:0,createdAt:serverTimestamp()},{merge:true});
 
@@ -18,7 +21,7 @@ onSnapshot(gameRef,s=>{
 onSnapshot(collection(db,'games',gameRef.id,'teams'),s=>{
   teams=s.docs.map(d=>({id:d.id,...d.data()}));
   renderTeams();
-  if(game.status==='review') buildReview();
+  if(game.status==='review' && reviewBuiltForRound!==game.round) runAiReview();
 });
 
 function renderState(){
@@ -29,7 +32,9 @@ function renderState(){
   const alreadyScored=(game.scoredRound||0)===(game.round||0) && (game.round||0)>0;
   qs('#review').disabled=game.status!=='stopped' || alreadyScored;
 
-  if(game.status==='review') buildReview();
+  if(game.status==='review' && reviewBuiltForRound!==game.round){
+    runAiReview();
+  }
 }
 
 function renderTeams(){
@@ -53,6 +58,10 @@ qs('#start').addEventListener('click',async()=>{
   const duration=Math.max(30,Math.min(300,Number(qs('#duration').value)||90));
   const end=new Date(Date.now()+duration*1000);
 
+  reviewBuiltForRound=null;
+  aiResults={};
+  scoresDraft={};
+
   await updateDoc(gameRef,{
     status:'playing',
     round:(game.round||0)+1,
@@ -64,7 +73,8 @@ qs('#start').addEventListener('click',async()=>{
     stopById:null,
     stopByName:null,
     reviewScores:null,
-    reviewTotals:null
+    reviewTotals:null,
+    aiReview:null
   });
 });
 
@@ -94,7 +104,8 @@ qs('#reset').addEventListener('click',async()=>{
     stopByName:null,
     scoredRound:0,
     reviewScores:null,
-    reviewTotals:null
+    reviewTotals:null,
+    aiReview:null
   },{merge:true});
 
   await batch.commit();
@@ -105,17 +116,141 @@ function getRoundAnswer(team,cat){
   return team.round===game.round ? (team.answers?.[cat]||'') : '';
 }
 
-function automaticScore(answer,cat){
+function baseCheck(answer){
   const a=norm(answer);
   const letter=norm(game.letter||'');
+  if(!a) return {eligible:false,score:0,reason:'Vazia'};
+  if(!letter || !a.startsWith(letter)) return {eligible:false,score:0,reason:'Fora da letra'};
+  return {eligible:true,score:null,reason:'Aguardando IA'};
+}
 
-  if(!a) return {score:0,reason:'Vazia'};
-  if(!letter || !a.startsWith(letter)) return {score:0,reason:'Fora da letra'};
+function duplicateCount(answer,cat){
+  const n=norm(answer);
+  return teams.filter(t=>norm(getRoundAnswer(t,cat))===n && n).length;
+}
 
-  const same=teams.filter(t=>norm(getRoundAnswer(t,cat))===a).length;
-  if(same>1) return {score:5,reason:`Repetida (${same} equipes)`};
+function buildAiItems(){
+  const items=[];
+  (game.categories||[]).forEach(cat=>{
+    teams.forEach(t=>{
+      const answer=getRoundAnswer(t,cat);
+      const base=baseCheck(answer);
+      if(base.eligible){
+        items.push({
+          id:`${t.id}|${cat}`,
+          teamId:t.id,
+          category:cat,
+          answer
+        });
+      }
+    });
+  });
+  return items;
+}
 
-  return {score:10,reason:'Única / letra correta'};
+async function runAiReview(){
+  reviewBuiltForRound=game.round;
+  scoresDraft={};
+  aiResults={};
+
+  qs('#autoBadge').hidden=false;
+  qs('#reviewSummary').hidden=false;
+  qs('#recalcReview').hidden=false;
+  qs('#finishReview').hidden=false;
+
+  setAiStatus('loading','🤖 Consultando a IA para validar as respostas...');
+
+  const items=buildAiItems();
+
+  try{
+    if(items.length){
+      const r=await fetch('/api/ai-review',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          letter:game.letter,
+          items:items.map(x=>({
+            id:x.id,
+            category:x.category,
+            answer:x.answer
+          }))
+        })
+      });
+
+      const data=await r.json().catch(()=>({}));
+      if(!r.ok || !data.ok){
+        throw new Error(data.error || `Erro HTTP ${r.status}`);
+      }
+
+      (data.results||[]).forEach(row=>{
+        aiResults[row.id]=row;
+      });
+
+      setAiStatus('ok',`🤖 IA concluída com ${data.model||'modelo configurado'}. Revise apenas os itens amarelos.`);
+    }else{
+      setAiStatus('ok','Nenhuma resposta precisou de IA nesta rodada.');
+    }
+
+  }catch(err){
+    console.error(err);
+    setAiStatus(
+      'warning',
+      `⚠️ IA indisponível: ${err.message}. A correção caiu para o modo V2 local; revise as respostas manualmente.`
+    );
+  }
+
+  buildReview();
+  await persistPreview();
+}
+
+function suggestedScore(team,cat,answer){
+  const base=baseCheck(answer);
+
+  if(!base.eligible){
+    return {
+      score:0,
+      state:'zero',
+      reason:base.reason,
+      confidence:1,
+      needsReview:false
+    };
+  }
+
+  const key=`${team.id}|${cat}`;
+  const ai=aiResults[key];
+
+  if(!ai){
+    const repeated=duplicateCount(answer,cat)>1;
+    return {
+      score:repeated?5:10,
+      state:'warning',
+      reason:'IA não avaliou — revisar',
+      confidence:0,
+      needsReview:true
+    };
+  }
+
+  const conf=Number(ai.confidence)||0;
+  const needsReview=conf<AI_CONFIDENCE_AUTO;
+
+  if(!ai.valid){
+    return {
+      score:0,
+      state:needsReview?'warning':'invalid',
+      reason:`${ai.reason} • IA ${Math.round(conf*100)}%`,
+      confidence:conf,
+      needsReview
+    };
+  }
+
+  const repeated=duplicateCount(answer,cat)>1;
+  return {
+    score:repeated?5:10,
+    state:needsReview?'warning':repeated?'repeat':'valid',
+    reason:`${ai.reason} • IA ${Math.round(conf*100)}%${repeated?' • repetida':''}`,
+    confidence:conf,
+    needsReview
+  };
 }
 
 function buildReview(){
@@ -123,8 +258,8 @@ function buildReview(){
   const area=qs('#reviewArea');
 
   scoresDraft={};
-  autoTotals={};
   let html='';
+  let reviewCount=0;
 
   cats.forEach(cat=>{
     html+=`<div class="category-card review-category">
@@ -135,26 +270,33 @@ function buildReview(){
 
     teams.forEach(t=>{
       const ans=getRoundAnswer(t,cat);
-      const auto=automaticScore(ans,cat);
+      const s=suggestedScore(t,cat,ans);
       const key=`${t.id}|${cat}`;
 
-      scoresDraft[key]=auto.score;
-      autoTotals[t.id]=(autoTotals[t.id]||0)+auto.score;
+      scoresDraft[key]=s.score;
+      if(s.needsReview) reviewCount++;
 
-      const stateClass=auto.score===10?'auto-valid':auto.score===5?'auto-repeat':'auto-zero';
+      const stateClass=
+        s.state==='valid'?'auto-valid':
+        s.state==='repeat'?'auto-repeat':
+        s.state==='warning'?'ai-warning':
+        'auto-zero';
 
-      html+=`<div class="review-row auto-review-row">
-        <div class="review-team"><b>${esc(t.name)}</b></div>
+      html+=`<div class="review-row auto-review-row ${s.needsReview?'needs-review':''}">
+        <div class="review-team">
+          <b>${esc(t.name)}</b>
+          ${s.needsReview?'<span class="review-flag">REVISAR</span>':''}
+        </div>
 
         <div class="review-answer">
           ${esc(ans)||'<span class="muted">— vazio —</span>'}
-          <span class="auto-reason ${stateClass}">${esc(auto.reason)}</span>
+          <span class="auto-reason ${stateClass}">${esc(s.reason)}</span>
         </div>
 
-        <select class="scoreSel" data-team="${t.id}" data-cat="${esc(cat)}">
-          <option value="10" ${auto.score===10?'selected':''}>10 — válida única</option>
-          <option value="5" ${auto.score===5?'selected':''}>5 — repetida</option>
-          <option value="0" ${auto.score===0?'selected':''}>0 — inválida</option>
+        <select class="scoreSel" data-team="${esc(t.id)}" data-cat="${esc(cat)}">
+          <option value="10" ${s.score===10?'selected':''}>10 — válida única</option>
+          <option value="5" ${s.score===5?'selected':''}>5 — repetida</option>
+          <option value="0" ${s.score===0?'selected':''}>0 — inválida</option>
         </select>
       </div>`;
     });
@@ -167,16 +309,20 @@ function buildReview(){
   document.querySelectorAll('.scoreSel').forEach(sel=>{
     sel.addEventListener('change',()=>{
       scoresDraft[`${sel.dataset.team}|${sel.dataset.cat}`]=Number(sel.value);
+      sel.closest('.auto-review-row')?.classList.remove('needs-review');
+      sel.closest('.auto-review-row')?.querySelector('.review-flag')?.remove();
       renderSummary();
     });
   });
 
-  qs('#finishReview').hidden=false;
-  qs('#recalcReview').hidden=false;
-  qs('#autoBadge').hidden=false;
-  qs('#reviewSummary').hidden=false;
-
   renderSummary();
+
+  if(reviewCount>0){
+    setAiStatus(
+      'warning',
+      `🟡 ${reviewCount} resposta${reviewCount===1?'':'s'} com baixa confiança. Confira os itens marcados como REVISAR antes de aplicar os pontos.`
+    );
+  }
 }
 
 function calculatedTotals(){
@@ -203,7 +349,25 @@ function renderSummary(){
   `).join('');
 }
 
-qs('#recalcReview').addEventListener('click',buildReview);
+async function persistPreview(){
+  try{
+    await updateDoc(gameRef,{
+      reviewScores:scoresDraft,
+      reviewTotals:calculatedTotals(),
+      aiReview:{
+        completedAt:serverTimestamp(),
+        threshold:AI_CONFIDENCE_AUTO
+      }
+    });
+  }catch(e){
+    console.warn('Não foi possível salvar preview da correção.',e);
+  }
+}
+
+qs('#recalcReview').addEventListener('click',()=>{
+  reviewBuiltForRound=null;
+  runAiReview();
+});
 
 qs('#finishReview').addEventListener('click',async()=>{
   if(game.status!=='review') return;
@@ -217,15 +381,15 @@ qs('#finishReview').addEventListener('click',async()=>{
       if(!gameSnap.exists()) throw new Error('Partida não encontrada.');
 
       const current=gameSnap.data();
+
       if((current.scoredRound||0)===currentRound){
         throw new Error('Esta rodada já foi pontuada.');
       }
+
       if(current.status!=='review'){
         throw new Error('A partida não está em correção.');
       }
 
-      // Firestore transaction não deve depender de leituras posteriores.
-      // Atualizações das equipes serão feitas em batch depois da trava da rodada.
       tx.update(gameRef,{
         scoredRound:currentRound,
         reviewScores:scoresDraft,
@@ -260,11 +424,23 @@ qs('#finishReview').addEventListener('click',async()=>{
   }
 });
 
+function setAiStatus(type,text){
+  const el=qs('#aiStatus');
+  el.hidden=false;
+  el.className=`ai-status ${type}`;
+  el.textContent=text;
+}
+
 function clearReview(){
+  reviewBuiltForRound=null;
+  aiResults={};
+  scoresDraft={};
+
   qs('#finishReview').hidden=true;
   qs('#recalcReview').hidden=true;
   qs('#autoBadge').hidden=true;
   qs('#reviewSummary').hidden=true;
   qs('#reviewSummary').innerHTML='';
   qs('#reviewArea').innerHTML='';
+  qs('#aiStatus').hidden=true;
 }
