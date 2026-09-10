@@ -16,6 +16,7 @@ let aiRetryTimer=null;
 let autoReviewTimer=null;
 let autoFinalizeRunning=false;
 let aiFailureCycles=0;
+let historyRows=[];
 
 const initialGameSnap=await getDoc(gameRef);
 if(initialGameSnap.exists()){
@@ -32,6 +33,104 @@ if(!initialGameSnap.exists()){
 }else if(!Array.isArray(initialGameSnap.data().usedLetters)){
   await updateDoc(gameRef,{usedLetters:[]});
 }
+
+
+// ===== RESPOSTAS / AUDITORIA =====
+// Esta coleção é consumida apenas pelo painel Admin.
+const historyCol=collection(db,'games',gameRef.id,'history');
+
+function historyDate(value){
+  try{
+    const d=value?.toDate
+      ? value.toDate()
+      : value?.seconds
+        ? new Date(value.seconds*1000)
+        : null;
+    return d?d.toLocaleString('pt-BR'):'';
+  }catch(_){ return ''; }
+}
+
+function renderHistory(){
+  const area=qs('#historyList');
+  if(!area) return;
+
+  const rows=[...historyRows].sort((a,b)=>{
+    const ta=Number(a.startedAt?.seconds||a.savedAt?.seconds||0);
+    const tb=Number(b.startedAt?.seconds||b.savedAt?.seconds||0);
+    return tb-ta;
+  });
+
+  if(!rows.length){
+    area.innerHTML='<div class="history-empty">Nenhuma rodada pontuada ainda.</div>';
+    return;
+  }
+
+  area.innerHTML=rows.map((h,index)=>{
+    const saved=historyDate(h.startedAt||h.savedAt);
+    const teamRows=Array.isArray(h.teams)?h.teams:[];
+    const stopper=h.stopByName?`• STOP: ${esc(h.stopByName)}`:'';
+
+    return `<details class="history-round" ${index===0?'open':''}>
+      <summary>
+        <div class="history-round-meta">
+          <span class="history-letter">${esc(h.letter||'-')}</span>
+          <span>Rodada ${Number(h.round||0)}</span>
+          <span class="history-stop">${stopper}</span>
+        </div>
+        <span class="history-date">${esc(saved)}</span>
+      </summary>
+      <div class="history-body">
+        ${teamRows.map(t=>`
+          <div class="history-team">
+            <div class="history-team-head">
+              <strong>${esc(t.name||'Equipe')}</strong>
+              <span class="history-team-points">
+                +${Number(t.roundPoints||0)} pts • total ${Number(t.totalAfter||0)}
+              </span>
+            </div>
+            ${(Array.isArray(t.answers)?t.answers:[]).map(a=>{
+              const p=Number(a.points||0);
+              const scoreClass=p===10?'s10':p===5?'s5':'s0';
+              const confidence=Number.isFinite(Number(a.aiConfidence))
+                ? `${Math.round(Number(a.aiConfidence)*100)}%`
+                : '—';
+              const decision=a.aiEvaluated
+                ? (a.aiValid?'VÁLIDA':'INVÁLIDA')
+                : (a.baseReason||'REGRA LOCAL');
+              const reason=a.aiReason||a.baseReason||'';
+              return `<div class="history-answer">
+                <div class="history-category">${esc(a.category||'')}</div>
+                <div class="history-response">${esc(a.answer||'—')}</div>
+                <div class="history-score ${scoreClass}">${p} pts</div>
+                <div class="history-ai">
+                  <b>${esc(decision)}</b>${a.aiEvaluated?` • IA ${esc(confidence)}`:''}
+                  ${reason?`<br>${esc(reason)}`:''}
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        `).join('')}
+      </div>
+    </details>`;
+  }).join('');
+}
+
+onSnapshot(historyCol,s=>{
+  historyRows=s.docs.map(d=>({id:d.id,...d.data()}));
+  renderHistory();
+});
+
+function openAdminTab(name){
+  const history=name==='history';
+  qs('#gameView').hidden=history;
+  qs('#historyView').hidden=!history;
+  qs('#tabGame').classList.toggle('active',!history);
+  qs('#tabHistory').classList.toggle('active',history);
+  if(history) renderHistory();
+}
+qs('#tabGame')?.addEventListener('click',()=>openAdminTab('game'));
+qs('#tabHistory')?.addEventListener('click',()=>openAdminTab('history'));
+qs('#refreshHistory')?.addEventListener('click',()=>renderHistory());
 
 onSnapshot(gameRef,s=>{
   if(s.exists()) game=s.data();
@@ -571,6 +670,55 @@ async function applyReviewScores({automatic=false}={}){
         const snap=await tx.get(ref);
         teamReads.push({t,ref,snap});
       }
+
+      // Guarda a rodada completa para consulta posterior.
+      // O horário de início entra no ID para não sobrescrever "Rodada 1"
+      // de outro dia ou após um reset de pontos.
+      const startSeconds=Number(current.startedAt?.seconds||0);
+      const startNanos=Number(current.startedAt?.nanoseconds||0);
+      const historyId=`round-${currentRound}-${startSeconds}-${startNanos}`;
+      const historyRef=doc(db,'games',gameRef.id,'history',historyId);
+
+      const historyTeams=teamReads.map(({t,snap})=>{
+        const currentScore=snap.exists()?Number(snap.data().score||0):Number(t.score||0);
+        const roundPoints=Number(totals[t.id]||0);
+
+        return {
+          id:t.id,
+          name:t.name||'Equipe',
+          roundPoints,
+          totalBefore:currentScore,
+          totalAfter:currentScore+roundPoints,
+          answers:(current.categories||game.categories||[]).map(cat=>{
+            const answer=t.round===currentRound?(t.answers?.[cat]||''):'';
+            const key=`${t.id}|${cat}`;
+            const ai=aiResults[key]||null;
+            const base=baseCheck(answer);
+
+            return {
+              category:cat,
+              answer,
+              points:Number(scoresDraft[key]||0),
+              aiEvaluated:!!ai,
+              aiValid:ai?!!ai.valid:null,
+              aiConfidence:ai?Number(ai.confidence||0):null,
+              aiReason:ai?.reason||null,
+              baseReason:!base.eligible?base.reason:null
+            };
+          })
+        };
+      });
+
+      tx.set(historyRef,{
+        round:currentRound,
+        letter:current.letter||game.letter||null,
+        categories:current.categories||game.categories||[],
+        stopByName:current.stopByName||game.stopByName||null,
+        stopById:current.stopById||game.stopById||null,
+        startedAt:current.startedAt||null,
+        savedAt:serverTimestamp(),
+        teams:historyTeams
+      });
 
       tx.update(gameRef,{
         scoredRound:currentRound,
