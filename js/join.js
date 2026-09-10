@@ -1,5 +1,5 @@
-import {db,gameRef,doc,setDoc,serverTimestamp} from './firebase.js?v=20260910-5';
-import {qs,getTeamId} from './common.js?v=20260910-5';
+import {db,gameRef,doc,setDoc,serverTimestamp} from './firebase.js?v=20260910-9';
+import {qs,getTeamId} from './common.js?v=20260910-9';
 
 const form=qs('#joinForm');
 const input=qs('#teamName');
@@ -24,6 +24,10 @@ form.addEventListener('submit',async e=>{
     },{merge:true});
 
     sessionStorage.setItem('texStopTeamName',name);
+    // O primeiro carregamento do game em alguns celulares só passa a receber
+    // as mudanças do Firestore depois de um refresh. Marcamos a entrada para
+    // o game.html fazer UM bootstrap automático, antes de exibir a espera.
+    sessionStorage.setItem('texStopNeedsFirstBoot','1');
     window.location.replace(`game.html?join=${Date.now()}`);
   }catch(err){
     console.error(err);
