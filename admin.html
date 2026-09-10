@@ -79,9 +79,9 @@ Filme ou Série</textarea>
       </div>
 
       <div style="height:14px"></div>
-      <button id="review" class="btn secondary" disabled>🤖 CORRIGIR COM IA</button>
+      <button id="review" class="btn secondary" disabled style="display:none">🤖 CORRIGIR COM IA</button>
       <p class="muted auto-help">
-        Após o STOP, o sistema elimina vazias/fora da letra e consulta a IA para validar se cada resposta realmente pertence à categoria. Casos duvidosos ficam marcados para revisão.
+        Após o STOP, a correção começa automaticamente. A IA valida as respostas, o sistema calcula 10/5/0, aplica os pontos e volta ao lobby sem intervenção.
       </p>
     </section>
   </div>
@@ -96,7 +96,7 @@ Filme ou Série</textarea>
       <div>
         <h2>Correção V2</h2>
         <p class="muted">
-          A IA valida o significado das respostas; o sistema calcula 10/5/0. Respostas com baixa confiança ficam amarelas para você revisar.
+          Correção 100% automática: a IA valida o significado das respostas e o sistema calcula e aplica 10/5/0. A tela abaixo serve apenas para acompanhar o processamento.
         </p>
       </div>
       <div id="autoBadge" class="auto-badge" hidden>🤖 IA</div>
@@ -113,6 +113,6 @@ Filme ou Série</textarea>
   </section>
 </div>
 
-<script type="module" src="js/admin.js?v=20260910-5"></script>
+<script type="module" src="js/admin.js?v=20260910-6"></script>
 </body>
 </html>
