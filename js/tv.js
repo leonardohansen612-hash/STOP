@@ -7,10 +7,33 @@ let introTimer=null,stopTimer=null,resultTimer=null;
 let audioCtx=null,soundEnabled=false,lastSecondBeep=null;
 let lastKnownScores=new Map();
 
-// Áudio oficial do STOP enviado pelo Tex Pub.
-const stopAudio=new Audio('./assets/pare.mp3?v=1');
-stopAudio.preload='auto';
-stopAudio.volume=1;
+// Biblioteca de áudios do STOP.
+// Escolhe aleatoriamente e evita repetir o mesmo som duas vezes seguidas.
+const stopSoundFiles=[
+  './assets/pare.mp3?v=1',
+  './assets/para-para-para-aeee.mp3?v=1',
+  './assets/mark-ronson-uptown-funk-ft.mp3?v=1',
+  './assets/stop_1.mp3?v=1',
+  './assets/its-time-to-stop-button.mp3?v=1'
+];
+
+const stopAudios=stopSoundFiles.map(src=>{
+  const a=new Audio(src);
+  a.preload='auto';
+  a.volume=1;
+  return a;
+});
+let lastStopSoundIndex=-1;
+
+function pickStopSoundIndex(){
+  if(stopAudios.length<=1) return 0;
+  let idx;
+  do{
+    idx=Math.floor(Math.random()*stopAudios.length);
+  }while(idx===lastStopSoundIndex);
+  lastStopSoundIndex=idx;
+  return idx;
+}
 
 function buildQr(){
   const joinUrl=new URL('./',window.location.href).href;
@@ -46,9 +69,13 @@ function soundIntro(){tone(330,.12,'triangle',.045);tone(494,.15,'triangle',.05,
 function soundStop(){
   if(!soundEnabled) return;
   try{
-    stopAudio.pause();
-    stopAudio.currentTime=0;
-    const p=stopAudio.play();
+    stopAudios.forEach(a=>{
+      a.pause();
+      a.currentTime=0;
+    });
+
+    const chosen=stopAudios[pickStopSoundIndex()];
+    const p=chosen.play();
     if(p?.catch) p.catch(()=>{});
   }catch(_){}
 }
@@ -58,10 +85,12 @@ qs('#soundToggle')?.addEventListener('click',()=>{
   soundEnabled=!soundEnabled;
   if(soundEnabled){
     ensureAudio();
-    stopAudio.load();
+    stopAudios.forEach(a=>a.load());
     soundIntro();
   }else{
-    try{stopAudio.pause();stopAudio.currentTime=0}catch(_){}
+    stopAudios.forEach(a=>{
+      try{a.pause();a.currentTime=0}catch(_){}
+    });
   }
   const b=qs('#soundToggle');
   b.textContent=soundEnabled?'🔊 SOM LIGADO':'🔇 ATIVAR SOM';
