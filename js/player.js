@@ -1,4 +1,4 @@
-import {db,gameRef,doc,updateDoc,onSnapshot,collection,serverTimestamp,runTransaction} from './firebase.js';
+import {db,gameRef,doc,getDocFromServer,updateDoc,onSnapshot,collection,serverTimestamp,runTransaction} from './firebase.js';
 import {qs,getTeamId,fmtTime} from './common.js';
 
 const teamId=getTeamId();
@@ -13,6 +13,8 @@ let currentCategoryIndex=0;
 let renderedRound=null;
 let saveTimer=null;
 let flashedRound=0;
+let syncFallbackInt=null;
+let lastRealtimeGameAt=0;
 
 const waiting=qs('#waiting');
 const gameEl=qs('#game');
@@ -40,9 +42,40 @@ onSnapshot(collection(db,'games',gameRef.id,'teams'),snap=>{
   render();
 });
 
-onSnapshot(gameRef,snap=>{
+onSnapshot(gameRef,{includeMetadataChanges:true},snap=>{
+  lastRealtimeGameAt=Date.now();
   game=snap.exists()?snap.data():null;
   render();
+},err=>{
+  console.error('Falha no listener em tempo real do jogo:',err);
+});
+
+// Fallback de sincronização: se o listener em tempo real ficar preso em cache
+// ou sofrer uma queda silenciosa no Wi-Fi do celular, consultamos o estado do
+// jogo periodicamente. Assim o INICIAR RODADA chega sem exigir F5/reload.
+async function forceGameSync(){
+  try{
+    const snap=await getDocFromServer(gameRef);
+    if(!snap.exists()) return;
+    const fresh=snap.data();
+
+    const currentRound=Number(game?.round||0);
+    const freshRound=Number(fresh.round||0);
+    const changed=!game || fresh.status!==game.status || freshRound!==currentRound || fresh.letter!==game.letter;
+
+    if(changed || Date.now()-lastRealtimeGameAt>4000){
+      game=fresh;
+      render();
+    }
+  }catch(e){
+    console.warn('Fallback de sincronização indisponível.',e);
+  }
+}
+
+syncFallbackInt=setInterval(forceGameSync,1500);
+window.addEventListener('focus',forceGameSync);
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden) forceGameSync();
 });
 
 function render(){

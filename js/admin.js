@@ -1,5 +1,5 @@
 import {
-  db,gameRef,doc,setDoc,updateDoc,onSnapshot,collection,serverTimestamp,writeBatch,runTransaction
+  db,gameRef,doc,getDoc,setDoc,updateDoc,onSnapshot,collection,serverTimestamp,writeBatch,runTransaction
 } from './firebase.js';
 import {qs,esc,norm,randomLetter,DEFAULT_CATEGORIES} from './common.js';
 
@@ -11,7 +11,18 @@ let scoresDraft={};
 let aiResults={};
 let reviewBuiltForRound=null;
 
-await setDoc(gameRef,{status:'lobby',round:0,createdAt:serverTimestamp()},{merge:true});
+const initialGameSnap=await getDoc(gameRef);
+if(!initialGameSnap.exists()){
+  await setDoc(gameRef,{
+    status:'lobby',
+    round:0,
+    usedLetters:[],
+    categories:DEFAULT_CATEGORIES,
+    createdAt:serverTimestamp()
+  });
+}else if(!Array.isArray(initialGameSnap.data().usedLetters)){
+  await updateDoc(gameRef,{usedLetters:[]});
+}
 
 onSnapshot(gameRef,s=>{
   if(s.exists()) game=s.data();
@@ -28,6 +39,9 @@ function renderState(){
   qs('#round').textContent=game.round||0;
   qs('#letter').textContent=game.letter||'-';
   qs('#status').textContent=game.status||'lobby';
+  const used=(game.usedLetters||[]);
+  const usedEl=qs('#usedLetters');
+  if(usedEl) usedEl.textContent=used.length?used.join(' • '):'Nenhuma';
 
   const alreadyScored=(game.scoredRound||0)===(game.round||0) && (game.round||0)>0;
   qs('#review').disabled=game.status!=='stopped' || alreadyScored;
@@ -57,6 +71,13 @@ qs('#start').addEventListener('click',async()=>{
   const cats=readCategories();
   const duration=Math.max(30,Math.min(300,Number(qs('#duration').value)||90));
   const end=new Date(Date.now()+duration*1000);
+  const usedLetters=Array.isArray(game.usedLetters)?game.usedLetters:[];
+  const nextLetter=randomLetter(usedLetters);
+
+  if(!nextLetter){
+    alert('Todas as letras disponíveis já foram usadas hoje. Clique em “NOVO DIA / LIMPAR TUDO” para reiniciar o ciclo de letras.');
+    return;
+  }
 
   reviewBuiltForRound=null;
   aiResults={};
@@ -65,7 +86,8 @@ qs('#start').addEventListener('click',async()=>{
   await updateDoc(gameRef,{
     status:'playing',
     round:(game.round||0)+1,
-    letter:randomLetter(),
+    letter:nextLetter,
+    usedLetters:[...usedLetters,nextLetter],
     categories:cats.length?cats:DEFAULT_CATEGORIES,
     startedAt:serverTimestamp(),
     endsAt:end,
@@ -84,7 +106,7 @@ qs('#review').addEventListener('click',async()=>{
 });
 
 qs('#reset').addEventListener('click',async()=>{
-  if(!confirm('Zerar placar e respostas de todas as equipes?')) return;
+  if(!confirm('Zerar pontos e respostas, mantendo as equipes e as letras já usadas hoje?')) return;
 
   const batch=writeBatch(db);
   teams.forEach(t=>{
@@ -101,6 +123,35 @@ qs('#reset').addEventListener('click',async()=>{
     round:0,
     letter:null,
     categories:DEFAULT_CATEGORIES,
+    stopByName:null,
+    scoredRound:0,
+    reviewScores:null,
+    reviewTotals:null,
+    aiReview:null
+  },{merge:true});
+
+  await batch.commit();
+  clearReview();
+});
+
+qs('#clearAll').addEventListener('click',async()=>{
+  if(!confirm('NOVO DIA: apagar TODAS as equipes, nomes, pontos, respostas e liberar novamente todas as letras?')) return;
+
+  const batch=writeBatch(db);
+  teams.forEach(t=>{
+    batch.delete(doc(db,'games',gameRef.id,'teams',t.id));
+  });
+
+  batch.set(gameRef,{
+    status:'lobby',
+    round:0,
+    letter:null,
+    usedLetters:[],
+    categories:DEFAULT_CATEGORIES,
+    startedAt:null,
+    endsAt:null,
+    stopAt:null,
+    stopById:null,
     stopByName:null,
     scoredRound:0,
     reviewScores:null,
