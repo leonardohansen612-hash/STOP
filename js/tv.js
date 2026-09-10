@@ -1,7 +1,11 @@
 import {db,gameRef,onSnapshot,collection} from './firebase.js';
 import {qs,esc,fmtTime} from './common.js';
 
-let game=null,teams=[],timerInt=null,lastFlash=0;
+let game=null,teams=[],timerInt=null;
+let previousStatus=null,previousRound=0;
+let introTimer=null,stopTimer=null,resultTimer=null;
+let audioCtx=null,soundEnabled=false,lastSecondBeep=null;
+let lastKnownScores=new Map();
 
 function buildQr(){
   const joinUrl=new URL('./',window.location.href).href;
@@ -10,33 +14,121 @@ function buildQr(){
   box.innerHTML='';
   if(window.QRCode){
     new QRCode(box,{
-      text:joinUrl,
-      width:300,
-      height:300,
+      text:joinUrl,width:300,height:300,
       correctLevel:QRCode.CorrectLevel.H,
-      colorDark:'#111111',
-      colorLight:'#ffffff'
+      colorDark:'#111111',colorLight:'#ffffff'
     });
-  }else{
-    box.innerHTML='<div class="muted">QR Code indisponível</div>';
-  }
+  }else box.innerHTML='<div class="muted">QR Code indisponível</div>';
 }
 buildQr();
 
+function ensureAudio(){
+  if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==='suspended') audioCtx.resume();
+}
+function tone(freq,duration=.12,type='sine',gain=.055,delay=0){
+  if(!soundEnabled) return;
+  ensureAudio();
+  const now=audioCtx.currentTime+delay;
+  const osc=audioCtx.createOscillator(),g=audioCtx.createGain();
+  osc.type=type;osc.frequency.setValueAtTime(freq,now);
+  g.gain.setValueAtTime(.0001,now);
+  g.gain.exponentialRampToValueAtTime(gain,now+.012);
+  g.gain.exponentialRampToValueAtTime(.0001,now+duration);
+  osc.connect(g);g.connect(audioCtx.destination);osc.start(now);osc.stop(now+duration+.03);
+}
+function soundIntro(){tone(330,.12,'triangle',.045);tone(494,.15,'triangle',.05,.13);tone(659,.34,'triangle',.06,.28)}
+function soundStop(){tone(120,.38,'sawtooth',.075);tone(82,.45,'square',.04,.04)}
+function soundResult(){tone(523,.12,'triangle',.045);tone(659,.12,'triangle',.05,.12);tone(784,.28,'triangle',.06,.24)}
+function soundTick(){tone(920,.055,'square',.025)}
+qs('#soundToggle')?.addEventListener('click',()=>{
+  soundEnabled=!soundEnabled;
+  if(soundEnabled){ensureAudio();soundIntro()}
+  const b=qs('#soundToggle');
+  b.textContent=soundEnabled?'🔊 SOM LIGADO':'🔇 ATIVAR SOM';
+  b.classList.toggle('on',soundEnabled);
+});
+
 onSnapshot(gameRef,s=>{
-  game=s.exists()?s.data():null;
+  const next=s.exists()?s.data():null;
+  const oldStatus=game?.status||previousStatus;
+  const oldRound=game?.round||previousRound;
+  game=next;
+  handleTransitions(oldStatus,oldRound);
   render();
+  previousStatus=game?.status||'lobby';
+  previousRound=game?.round||0;
 });
 
 onSnapshot(collection(db,'games',gameRef.id,'teams'),s=>{
+  const oldScores=new Map(teams.map(t=>[t.id,Number(t.score||0)]));
   teams=s.docs.map(d=>({id:d.id,...d.data()}));
+  if(oldScores.size) lastKnownScores=oldScores;
   render();
 });
 
-function renderRankCards(targetId){
-  const el=qs(targetId);
-  if(!el) return;
+function showOverlay(id,ms){
+  const el=qs(id); if(!el) return;
+  el.classList.add('show');
+  const timer=setTimeout(()=>el.classList.remove('show'),ms);
+  return timer;
+}
+function hideOverlay(id){qs(id)?.classList.remove('show')}
 
+function handleTransitions(oldStatus,oldRound){
+  const status=game?.status||'lobby';
+  const round=game?.round||0;
+
+  // Nova rodada: revelação cinematográfica da letra.
+  if(status==='playing' && (oldStatus!=='playing' || round!==oldRound)){
+    hideOverlay('#stopOverlay');hideOverlay('#resultOverlay');
+    qs('#introLetter').textContent=game.letter||'?';
+    qs('#introRound').textContent=`RODADA ${round}`;
+    clearTimeout(introTimer);
+    introTimer=showOverlay('#roundIntro',2350);
+    soundIntro();
+  }
+
+  // STOP: impacto em tela cheia.
+  if(status==='stopped' && oldStatus!=='stopped'){
+    hideOverlay('#roundIntro');
+    qs('#stopWho').textContent=game.stopByName||'';
+    clearTimeout(stopTimer);
+    stopTimer=showOverlay('#stopOverlay',2100);
+    soundStop();
+  }
+
+  // A correção automática pode ser muito rápida. Quando volta ao lobby,
+  // mostramos um resumo usando lastRoundPoints já gravado nas equipes.
+  if(status==='lobby' && (oldStatus==='review' || oldStatus==='stopped') && round>0){
+    setTimeout(()=>showRoundResult(),180);
+  }
+}
+
+function showRoundResult(){
+  if(!teams.length) return;
+  const roundPoints=[...teams]
+    .map(t=>({...t,roundPts:Number(t.lastRoundPoints||0)}))
+    .sort((a,b)=>b.roundPts-a.roundPts || Number(b.score||0)-Number(a.score||0));
+
+  const best=roundPoints[0];
+  qs('#resultTeam').textContent=best?.name||'Rodada concluída';
+  qs('#resultPoints').textContent=`+${best?.roundPts||0} PTS`;
+
+  const ordered=[...teams]
+    .sort((a,b)=>(b.score||0)-(a.score||0) || String(a.name||'').localeCompare(String(b.name||''),'pt-BR'))
+    .slice(0,3);
+  qs('#resultRanking').innerHTML=ordered.map((t,i)=>`
+    <div class="result-rank">${i+1}º ${esc(t.name||'Equipe')}<strong>${Number(t.score||0)} pts</strong></div>
+  `).join('');
+
+  clearTimeout(resultTimer);
+  resultTimer=showOverlay('#resultOverlay',4200);
+  soundResult();
+}
+
+function renderRankCards(targetId){
+  const el=qs(targetId); if(!el) return;
   const ordered=[...teams]
     .sort((a,b)=>(b.score||0)-(a.score||0) || String(a.name||'').localeCompare(String(b.name||''),'pt-BR'))
     .slice(0,5);
@@ -45,7 +137,6 @@ function renderRankCards(targetId){
     el.innerHTML='<div class="tv-empty">Aguardando equipes...</div>';
     return;
   }
-
   el.innerHTML=ordered.map((t,i)=>`
     <div class="tv-rank-card ${i===0?'first':''}">
       <span class="tv-rank-pos">${i+1}º</span>
@@ -57,14 +148,13 @@ function renderRankCards(targetId){
 
 function render(){
   const status=game?.status||'lobby';
-
   qs('#statusText').textContent=
-    status==='playing'?'Jogando':
+    status==='playing'?'AO VIVO':
     status==='stopped'?'STOP':
-    status==='review'?'Correção':
-    'Aguardando';
-
+    status==='review'?'CORRIGINDO COM IA':
+    'AGUARDANDO';
   qs('#dot').className='dot '+(status==='playing'?'live':status==='stopped'?'stop':'');
+  qs('#roundBadge').textContent=`RODADA ${game?.round||0}`;
 
   qs('#lobby').hidden=status!=='lobby';
   qs('#playing').hidden=status!=='playing';
@@ -72,7 +162,6 @@ function render(){
 
   const teamCount=qs('#teamCount');
   if(teamCount) teamCount.textContent=teams.length;
-
   const lobbyTeams=qs('#teamsLobby');
   if(lobbyTeams){
     lobbyTeams.innerHTML=teams.length
@@ -90,54 +179,58 @@ function render(){
     `).join('');
     clearInterval(timerInt);
     tick();
-    timerInt=setInterval(tick,250);
+    timerInt=setInterval(tick,200);
   }else{
     clearInterval(timerInt);
-  }
-
-  if(status==='stopped'&&lastFlash!==game.round){
-    lastFlash=game.round;
-    qs('#flashWho').textContent=game.stopByName||'';
-    qs('#flash').classList.add('show');
-    setTimeout(()=>qs('#flash').classList.remove('show'),2200);
+    lastSecondBeep=null;
   }
 
   if(status==='review') renderReview();
 }
 
 function tick(){
+  const timer=qs('#timer'),card=document.querySelector('.tv-timer-card'),bar=qs('#timeProgress');
   if(!game?.endsAt){
-    qs('#timer').textContent='--:--';
+    timer.textContent='--:--';card?.classList.remove('timer-danger');
+    if(bar) bar.style.transform='scaleX(1)';
     return;
   }
   const end=game.endsAt.toMillis?game.endsAt.toMillis():game.endsAt;
-  qs('#timer').textContent=fmtTime(end-Date.now());
+  const remaining=Math.max(0,end-Date.now());
+  timer.textContent=fmtTime(remaining);
+  card?.classList.toggle('timer-danger',remaining<=10000);
+
+  const start=game.startedAt?.toMillis?game.startedAt.toMillis():null;
+  if(start && end>start && bar){
+    const pct=Math.max(0,Math.min(1,remaining/(end-start)));
+    bar.style.transform=`scaleX(${pct})`;
+  }
+
+  const sec=Math.ceil(remaining/1000);
+  if(soundEnabled && sec<=5 && sec>0 && sec!==lastSecondBeep){
+    lastSecondBeep=sec;soundTick();
+  }
 }
 
 function renderReview(){
   qs('#reviewRound').textContent=game?.round||'-';
   let html='';
   const reviewScores=game?.reviewScores||{};
-
   (game.categories||[]).forEach((c,idx)=>{
     html+=`<div class="tv-review-card">
       <div class="tv-review-cat"><span>${idx+1}</span>${esc(c)}</div>
       <div class="tv-review-answers">`;
-
     teams.forEach(t=>{
       const key=`${t.id}|${c}`;
       const answer=(t.round===game.round&&t.answers?.[c])||'—';
       const score=reviewScores[key];
-
       html+=`<div class="tv-review-row">
         <b>${esc(t.name||'Equipe')}</b>
         <span>${esc(answer)}</span>
         ${score!==undefined?`<strong class="tv-review-score">+${score}</strong>`:''}
       </div>`;
     });
-
     html+='</div></div>';
   });
-
   qs('#reviewTv').innerHTML=html;
 }
