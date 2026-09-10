@@ -72,8 +72,24 @@ async function forceGameSync(){
   }
 }
 
-syncFallbackInt=setInterval(forceGameSync,1500);
+// Faz uma leitura REAL do servidor imediatamente ao abrir o jogo.
+// Nos primeiros segundos usamos uma cadência mais agressiva para eliminar a
+// janela em que o celular entrou na sala mas a conexão realtime ainda está
+// sendo estabelecida. Depois voltamos para uma verificação leve.
+forceGameSync();
+
+let warmupChecks=0;
+const warmupInt=setInterval(async()=>{
+  warmupChecks++;
+  await forceGameSync();
+  if(warmupChecks>=20){
+    clearInterval(warmupInt);
+    if(!syncFallbackInt) syncFallbackInt=setInterval(forceGameSync,1500);
+  }
+},500);
+
 window.addEventListener('focus',forceGameSync);
+window.addEventListener('pageshow',forceGameSync);
 document.addEventListener('visibilitychange',()=>{
   if(!document.hidden) forceGameSync();
 });
