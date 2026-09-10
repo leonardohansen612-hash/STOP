@@ -1,5 +1,5 @@
-import {db,gameRef,doc,getDocFromServer,updateDoc,onSnapshot,collection,serverTimestamp,runTransaction} from './firebase.js?v=20260910-5';
-import {qs,getTeamId,fmtTime} from './common.js?v=20260910-5';
+import {db,gameRef,doc,getDocFromServer,updateDoc,onSnapshot,collection,serverTimestamp,runTransaction} from './firebase.js?v=20260910-6';
+import {qs,getTeamId,fmtTime} from './common.js?v=20260910-6';
 
 const teamId=getTeamId();
 let teamName=sessionStorage.getItem('texStopTeamName')||'';
@@ -188,7 +188,7 @@ function renderCategory(){
 function captureCurrentAnswer(){
   const cats=game?.categories||[];
   const cat=cats[currentCategoryIndex];
-  if(cat) answers[cat]=answerInput.value.trim();
+  if(cat) answers[cat]=answerInput.value;
 }
 
 function queueSave(){

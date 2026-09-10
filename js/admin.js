@@ -1,9 +1,9 @@
 import {
   db,gameRef,doc,getDoc,setDoc,updateDoc,onSnapshot,collection,serverTimestamp,writeBatch,runTransaction
-} from './firebase.js?v=20260910-5';
-import {qs,esc,norm,randomLetter,DEFAULT_CATEGORIES} from './common.js?v=20260910-5';
+} from './firebase.js?v=20260910-6';
+import {qs,esc,norm,randomLetter,DEFAULT_CATEGORIES} from './common.js?v=20260910-6';
 
-const AI_CONFIDENCE_AUTO = 0.90;
+const AI_CONFIDENCE_AUTO = 0.90; // exibido apenas como informação; a IA decide automaticamente
 
 let game={status:'lobby',round:0};
 let teams=[];
@@ -13,6 +13,9 @@ let reviewBuiltForRound=null;
 let teamsReady=false;
 let aiReviewRunning=false;
 let aiRetryTimer=null;
+let autoReviewTimer=null;
+let autoFinalizeRunning=false;
+let aiFailureCycles=0;
 
 const initialGameSnap=await getDoc(gameRef);
 if(initialGameSnap.exists()){
@@ -53,6 +56,12 @@ function renderState(){
   const alreadyScored=(game.scoredRound||0)===(game.round||0) && (game.round||0)>0;
   qs('#review').disabled=game.status!=='stopped' || alreadyScored;
 
+  // Fluxo 100% automático: STOP -> REVIEW -> IA -> pontos -> LOBBY.
+  // Pequena espera para dar tempo aos últimos autosaves dos celulares chegarem.
+  if(game.status==='stopped' && !alreadyScored){
+    queueAutomaticReview(game.round||0);
+  }
+
   if(game.status==='review' && reviewBuiltForRound!==game.round){
     queueAiReview(80);
   }
@@ -89,6 +98,7 @@ qs('#start').addEventListener('click',async()=>{
   reviewBuiltForRound=null;
   aiResults={};
   scoresDraft={};
+  aiFailureCycles=0;
 
   await updateDoc(gameRef,{
     status:'playing',
@@ -111,6 +121,27 @@ qs('#review').addEventListener('click',async()=>{
   if(game.status!=='stopped') return;
   await updateDoc(gameRef,{status:'review'});
 });
+
+function queueAutomaticReview(round){
+  if(autoReviewTimer) clearTimeout(autoReviewTimer);
+  autoReviewTimer=setTimeout(async()=>{
+    autoReviewTimer=null;
+    try{
+      await runTransaction(db,async tx=>{
+        const snap=await tx.get(gameRef);
+        if(!snap.exists()) return;
+        const current=snap.data();
+        if(current.status!=='stopped') return;
+        if((current.round||0)!==round) return;
+        if((current.scoredRound||0)===round && round>0) return;
+        tx.update(gameRef,{status:'review'});
+      });
+    }catch(err){
+      console.error('Falha ao iniciar correção automática.',err);
+      setTimeout(()=>queueAutomaticReview(round),1200);
+    }
+  },700);
+}
 
 qs('#reset').addEventListener('click',async()=>{
   if(!confirm('Zerar pontos e respostas, mantendo as equipes e as letras já usadas hoje?')) return;
@@ -305,24 +336,34 @@ async function runAiReview(){
         throw new Error(`Faltaram ${missing.length} resposta(s) na correção da IA.`);
       }
 
-      setAiStatus('ok',`🤖 IA concluída com ${data.model||'modelo configurado'}. Revise apenas os itens realmente duvidosos.`);
+      setAiStatus('ok',`🤖 IA concluída com ${data.model||'modelo configurado'}. Aplicando os pontos automaticamente...`);
     }else{
-      setAiStatus('ok','Nenhuma resposta precisou de IA nesta rodada.');
+      setAiStatus('ok','Nenhuma resposta precisou de IA. Aplicando os pontos automaticamente...');
     }
 
+    aiFailureCycles=0;
     reviewBuiltForRound=game.round;
     buildReview({preserveAiStatus:true});
     await persistPreview();
+    await applyReviewScores({automatic:true});
 
   }catch(err){
     console.error(err);
-    // Permite clicar RECALCULAR e também uma nova tentativa automática depois.
     reviewBuiltForRound=null;
     buildReview({preserveAiStatus:true});
-    setAiStatus(
-      'warning',
-      `⚠️ A IA não conseguiu corrigir esta rodada: ${err.message}. Clique em RECALCULAR para tentar novamente.`
-    );
+    aiFailureCycles++;
+    if(aiFailureCycles<=5){
+      setAiStatus(
+        'warning',
+        `⚠️ Falha temporária na IA: ${err.message}. Nova tentativa automática em 5 segundos (${aiFailureCycles}/5)...`
+      );
+      queueAiReview(5000);
+    }else{
+      setAiStatus(
+        'warning',
+        `⚠️ A IA não respondeu após várias tentativas: ${err.message}. O sistema NÃO aplicou pontos. Use RECALCULAR após verificar a conexão/API.`
+      );
+    }
   }finally{
     aiReviewRunning=false;
   }
@@ -356,25 +397,27 @@ function suggestedScore(team,cat,answer){
   }
 
   const conf=Number(ai.confidence)||0;
-  const needsReview=conf<AI_CONFIDENCE_AUTO;
 
+  // Modo automático: confiamos na decisão valid/invalid da IA mesmo quando
+  // a confiança informada pelo modelo é menor. A confiança fica só visível
+  // para auditoria, sem exigir intervenção do apresentador.
   if(!ai.valid){
     return {
       score:0,
-      state:needsReview?'warning':'invalid',
+      state:'invalid',
       reason:`${ai.reason} • IA ${Math.round(conf*100)}%`,
       confidence:conf,
-      needsReview
+      needsReview:false
     };
   }
 
   const repeated=duplicateCount(answer,cat)>1;
   return {
     score:repeated?5:10,
-    state:needsReview?'warning':repeated?'repeat':'valid',
+    state:repeated?'repeat':'valid',
     reason:`${ai.reason} • IA ${Math.round(conf*100)}%${repeated?' • repetida':''}`,
     confidence:conf,
-    needsReview
+    needsReview:false
   };
 }
 
@@ -499,60 +542,72 @@ qs('#recalcReview').addEventListener('click',()=>{
   queueAiReview(0);
 });
 
-qs('#finishReview').addEventListener('click',async()=>{
+async function applyReviewScores({automatic=false}={}){
+  if(autoFinalizeRunning) return;
   if(game.status!=='review') return;
 
+  autoFinalizeRunning=true;
   const totals=calculatedTotals();
   const currentRound=game.round||0;
 
   try{
+    // Pontuação da rodada + placar das equipes + volta ao lobby em uma única
+    // transação. Evita marcar a rodada como pontuada sem atualizar as equipes.
     await runTransaction(db,async tx=>{
       const gameSnap=await tx.get(gameRef);
       if(!gameSnap.exists()) throw new Error('Partida não encontrada.');
 
       const current=gameSnap.data();
-
       if((current.scoredRound||0)===currentRound){
-        throw new Error('Esta rodada já foi pontuada.');
+        return; // outra execução já concluiu esta rodada
       }
-
       if(current.status!=='review'){
         throw new Error('A partida não está em correção.');
+      }
+
+      const teamReads=[];
+      for(const t of teams){
+        const ref=doc(db,'games',gameRef.id,'teams',t.id);
+        const snap=await tx.get(ref);
+        teamReads.push({t,ref,snap});
       }
 
       tx.update(gameRef,{
         scoredRound:currentRound,
         reviewScores:scoresDraft,
         reviewTotals:totals,
-        scoredAt:serverTimestamp()
+        scoredAt:serverTimestamp(),
+        status:'lobby',
+        letter:null,
+        stopByName:null,
+        stopById:null
+      });
+
+      teamReads.forEach(({t,ref,snap})=>{
+        const currentScore=snap.exists()?Number(snap.data().score||0):Number(t.score||0);
+        const add=Number(totals[t.id]||0);
+        tx.set(ref,{
+          score:currentScore+add,
+          lastRoundPoints:add
+        },{merge:true});
       });
     });
 
-    const batch=writeBatch(db);
-
-    teams.forEach(t=>{
-      const add=totals[t.id]||0;
-      batch.set(doc(db,'games',gameRef.id,'teams',t.id),{
-        score:(t.score||0)+add,
-        lastRoundPoints:add
-      },{merge:true});
-    });
-
-    batch.set(gameRef,{
-      status:'lobby',
-      letter:null,
-      stopByName:null,
-      stopById:null
-    },{merge:true});
-
-    await batch.commit();
     clearReview();
-
   }catch(err){
     console.error(err);
-    alert(err.message||'Não foi possível aplicar a pontuação.');
+    if(automatic){
+      setAiStatus('warning',`⚠️ A IA corrigiu, mas não consegui aplicar os pontos: ${err.message}. Vou tentar novamente.`);
+      setTimeout(()=>applyReviewScores({automatic:true}),1500);
+    }else{
+      alert(err.message||'Não foi possível aplicar a pontuação.');
+    }
+  }finally{
+    autoFinalizeRunning=false;
   }
-});
+}
+
+qs('#finishReview').addEventListener('click',()=>applyReviewScores({automatic:false}));
 
 function setAiStatus(type,text){
   const el=qs('#aiStatus');
