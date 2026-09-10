@@ -1,5 +1,5 @@
-import {db,gameRef,doc,setDoc,serverTimestamp} from './firebase.js';
-import {qs,getTeamId} from './common.js';
+import {db,gameRef,doc,setDoc,serverTimestamp} from './firebase.js?v=20260910-5';
+import {qs,getTeamId} from './common.js?v=20260910-5';
 
 const form=qs('#joinForm');
 const input=qs('#teamName');

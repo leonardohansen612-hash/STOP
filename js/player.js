@@ -1,5 +1,5 @@
-import {db,gameRef,doc,getDocFromServer,updateDoc,onSnapshot,collection,serverTimestamp,runTransaction} from './firebase.js?v=20260910-4';
-import {qs,getTeamId,fmtTime} from './common.js?v=20260910-4';
+import {db,gameRef,doc,getDocFromServer,updateDoc,onSnapshot,collection,serverTimestamp,runTransaction} from './firebase.js?v=20260910-5';
+import {qs,getTeamId,fmtTime} from './common.js?v=20260910-5';
 
 const teamId=getTeamId();
 let teamName=sessionStorage.getItem('texStopTeamName')||'';

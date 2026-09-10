@@ -1,7 +1,7 @@
 import {
   db,gameRef,doc,getDoc,setDoc,updateDoc,onSnapshot,collection,serverTimestamp,writeBatch,runTransaction
-} from './firebase.js';
-import {qs,esc,norm,randomLetter,DEFAULT_CATEGORIES} from './common.js';
+} from './firebase.js?v=20260910-5';
+import {qs,esc,norm,randomLetter,DEFAULT_CATEGORIES} from './common.js?v=20260910-5';
 
 const AI_CONFIDENCE_AUTO = 0.90;
 
@@ -12,6 +12,9 @@ let aiResults={};
 let reviewBuiltForRound=null;
 
 const initialGameSnap=await getDoc(gameRef);
+if(initialGameSnap.exists()){
+  game=initialGameSnap.data();
+}
 if(!initialGameSnap.exists()){
   await setDoc(gameRef,{
     status:'lobby',

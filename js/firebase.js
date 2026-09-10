@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { initializeFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, onSnapshot, collection, addDoc, query, where, getDocs, serverTimestamp, runTransaction, writeBatch } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-import { firebaseConfig, GAME_ID } from "../firebase-config.js";
+import { firebaseConfig, GAME_ID } from "../firebase-config.js?v=20260910-5";
 
 const app = initializeApp(firebaseConfig);
 
