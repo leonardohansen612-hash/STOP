@@ -1,5 +1,5 @@
-import {db,gameRef,doc,getDocFromServer,updateDoc,onSnapshot,collection,serverTimestamp,runTransaction} from './firebase.js';
-import {qs,getTeamId,fmtTime} from './common.js';
+import {db,gameRef,doc,getDocFromServer,updateDoc,onSnapshot,collection,serverTimestamp,runTransaction} from './firebase.js?v=20260910-4';
+import {qs,getTeamId,fmtTime} from './common.js?v=20260910-4';
 
 const teamId=getTeamId();
 let teamName=sessionStorage.getItem('texStopTeamName')||'';
@@ -26,10 +26,22 @@ const stopBtn=qs('#stopBtn');
 
 qs('#teamDisplay').textContent=teamName;
 
+// Bootstrap obrigatório: lê o estado atual diretamente do servidor ANTES de
+// depender do primeiro evento realtime. Isso evita ficar preso no lobby na
+// primeira rodada em celulares que restauraram a página/cache anterior.
+try{
+  const bootSnap=await getDocFromServer(gameRef);
+  game=bootSnap.exists()?bootSnap.data():null;
+}catch(e){
+  console.warn('Bootstrap inicial do jogo falhou; realtime assumirá.',e);
+}
+
 function setStatus(s){
   qs('#statusText').textContent=s;
   qs('#dot').className='dot '+(s==='Jogando'?'live':s==='STOP'?'stop':'');
 }
+
+render();
 
 onSnapshot(collection(db,'games',gameRef.id,'teams'),snap=>{
   const mine=snap.docs.map(d=>({id:d.id,...d.data()})).find(t=>t.id===teamId);

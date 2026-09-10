@@ -24,7 +24,7 @@ form.addEventListener('submit',async e=>{
     },{merge:true});
 
     sessionStorage.setItem('texStopTeamName',name);
-    window.location.href='game.html';
+    window.location.replace(`game.html?join=${Date.now()}`);
   }catch(err){
     console.error(err);
     btn.disabled=false;
