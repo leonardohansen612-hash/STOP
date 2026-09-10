@@ -7,6 +7,11 @@ let introTimer=null,stopTimer=null,resultTimer=null;
 let audioCtx=null,soundEnabled=false,lastSecondBeep=null;
 let lastKnownScores=new Map();
 
+// Áudio oficial do STOP enviado pelo Tex Pub.
+const stopAudio=new Audio('./assets/pare.mp3?v=1');
+stopAudio.preload='auto';
+stopAudio.volume=1;
+
 function buildQr(){
   const joinUrl=new URL('./',window.location.href).href;
   qs('#joinUrl').textContent=joinUrl.replace(/^https?:\/\//,'').replace(/\/$/,'');
@@ -38,12 +43,26 @@ function tone(freq,duration=.12,type='sine',gain=.055,delay=0){
   osc.connect(g);g.connect(audioCtx.destination);osc.start(now);osc.stop(now+duration+.03);
 }
 function soundIntro(){tone(330,.12,'triangle',.045);tone(494,.15,'triangle',.05,.13);tone(659,.34,'triangle',.06,.28)}
-function soundStop(){tone(120,.38,'sawtooth',.075);tone(82,.45,'square',.04,.04)}
+function soundStop(){
+  if(!soundEnabled) return;
+  try{
+    stopAudio.pause();
+    stopAudio.currentTime=0;
+    const p=stopAudio.play();
+    if(p?.catch) p.catch(()=>{});
+  }catch(_){}
+}
 function soundResult(){tone(523,.12,'triangle',.045);tone(659,.12,'triangle',.05,.12);tone(784,.28,'triangle',.06,.24)}
 function soundTick(){tone(920,.055,'square',.025)}
 qs('#soundToggle')?.addEventListener('click',()=>{
   soundEnabled=!soundEnabled;
-  if(soundEnabled){ensureAudio();soundIntro()}
+  if(soundEnabled){
+    ensureAudio();
+    stopAudio.load();
+    soundIntro();
+  }else{
+    try{stopAudio.pause();stopAudio.currentTime=0}catch(_){}
+  }
   const b=qs('#soundToggle');
   b.textContent=soundEnabled?'🔊 SOM LIGADO':'🔇 ATIVAR SOM';
   b.classList.toggle('on',soundEnabled);
