@@ -10,6 +10,9 @@ let teams=[];
 let scoresDraft={};
 let aiResults={};
 let reviewBuiltForRound=null;
+let teamsReady=false;
+let aiReviewRunning=false;
+let aiRetryTimer=null;
 
 const initialGameSnap=await getDoc(gameRef);
 if(initialGameSnap.exists()){
@@ -34,8 +37,9 @@ onSnapshot(gameRef,s=>{
 
 onSnapshot(collection(db,'games',gameRef.id,'teams'),s=>{
   teams=s.docs.map(d=>({id:d.id,...d.data()}));
+  teamsReady=true;
   renderTeams();
-  if(game.status==='review' && reviewBuiltForRound!==game.round) runAiReview();
+  if(game.status==='review' && reviewBuiltForRound!==game.round) queueAiReview(80);
 });
 
 function renderState(){
@@ -50,7 +54,7 @@ function renderState(){
   qs('#review').disabled=game.status!=='stopped' || alreadyScored;
 
   if(game.status==='review' && reviewBuiltForRound!==game.round){
-    runAiReview();
+    queueAiReview(80);
   }
 }
 
@@ -202,8 +206,65 @@ function buildAiItems(){
   return items;
 }
 
+function queueAiReview(delay=0){
+  if(aiRetryTimer) clearTimeout(aiRetryTimer);
+  aiRetryTimer=setTimeout(()=>{
+    aiRetryTimer=null;
+    runAiReview();
+  },delay);
+}
+
+async function requestAiReview(items,attempt=1){
+  const r=await fetch(`/api/ai-review?_=${Date.now()}`,{
+    method:'POST',
+    cache:'no-store',
+    headers:{
+      'Content-Type':'application/json',
+      'Cache-Control':'no-cache'
+    },
+    body:JSON.stringify({
+      letter:game.letter,
+      items:items.map(x=>({
+        id:x.id,
+        category:x.category,
+        answer:x.answer
+      }))
+    })
+  });
+
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok || !data.ok){
+    throw new Error(data.error || `Erro HTTP ${r.status}`);
+  }
+
+  const rows=Array.isArray(data.results)?data.results:[];
+  if(rows.length!==items.length){
+    throw new Error(`A IA devolveu ${rows.length} de ${items.length} respostas.`);
+  }
+
+  return data;
+}
+
 async function runAiReview(){
-  reviewBuiltForRound=game.round;
+  if(aiReviewRunning) return;
+  if(game.status!=='review') return;
+
+  // Na entrada em REVIEW o snapshot do jogo pode chegar alguns ms antes
+  // do snapshot das equipes. Não marque a rodada como processada antes disso.
+  if(!teamsReady){
+    setAiStatus('loading','🤖 Aguardando respostas das equipes...');
+    queueAiReview(250);
+    return;
+  }
+
+  const items=buildAiItems();
+  if(!teams.length){
+    setAiStatus('loading','🤖 Aguardando equipes...');
+    queueAiReview(250);
+    return;
+  }
+
+  aiReviewRunning=true;
   scoresDraft={};
   aiResults={};
 
@@ -214,47 +275,57 @@ async function runAiReview(){
 
   setAiStatus('loading','🤖 Consultando a IA para validar as respostas...');
 
-  const items=buildAiItems();
+  let aiError=null;
 
   try{
     if(items.length){
-      const r=await fetch('/api/ai-review',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          letter:game.letter,
-          items:items.map(x=>({
-            id:x.id,
-            category:x.category,
-            answer:x.answer
-          }))
-        })
-      });
-
-      const data=await r.json().catch(()=>({}));
-      if(!r.ok || !data.ok){
-        throw new Error(data.error || `Erro HTTP ${r.status}`);
+      let data=null;
+      for(let attempt=1;attempt<=3;attempt++){
+        try{
+          data=await requestAiReview(items,attempt);
+          break;
+        }catch(err){
+          aiError=err;
+          console.warn(`Tentativa IA ${attempt}/3 falhou:`,err);
+          if(attempt<3){
+            setAiStatus('loading',`🤖 IA demorou a responder. Tentando novamente (${attempt+1}/3)...`);
+            await new Promise(resolve=>setTimeout(resolve,500*attempt));
+          }
+        }
       }
 
+      if(!data) throw aiError || new Error('A IA não respondeu.');
+
       (data.results||[]).forEach(row=>{
-        aiResults[row.id]=row;
+        aiResults[String(row.id)]=row;
       });
 
-      setAiStatus('ok',`🤖 IA concluída com ${data.model||'modelo configurado'}. Revise apenas os itens amarelos.`);
+      const missing=items.filter(x=>!aiResults[x.id]);
+      if(missing.length){
+        throw new Error(`Faltaram ${missing.length} resposta(s) na correção da IA.`);
+      }
+
+      setAiStatus('ok',`🤖 IA concluída com ${data.model||'modelo configurado'}. Revise apenas os itens realmente duvidosos.`);
     }else{
       setAiStatus('ok','Nenhuma resposta precisou de IA nesta rodada.');
     }
 
+    reviewBuiltForRound=game.round;
+    buildReview({preserveAiStatus:true});
+    await persistPreview();
+
   }catch(err){
     console.error(err);
+    // Permite clicar RECALCULAR e também uma nova tentativa automática depois.
+    reviewBuiltForRound=null;
+    buildReview({preserveAiStatus:true});
     setAiStatus(
       'warning',
-      `⚠️ IA indisponível: ${err.message}. A correção caiu para o modo V2 local; revise as respostas manualmente.`
+      `⚠️ A IA não conseguiu corrigir esta rodada: ${err.message}. Clique em RECALCULAR para tentar novamente.`
     );
+  }finally{
+    aiReviewRunning=false;
   }
-
-  buildReview();
-  await persistPreview();
 }
 
 function suggestedScore(team,cat,answer){
@@ -307,7 +378,7 @@ function suggestedScore(team,cat,answer){
   };
 }
 
-function buildReview(){
+function buildReview({preserveAiStatus=false}={}){
   const cats=game.categories||[];
   const area=qs('#reviewArea');
 
@@ -371,10 +442,15 @@ function buildReview(){
 
   renderSummary();
 
-  if(reviewCount>0){
+  if(reviewCount>0 && !preserveAiStatus){
     setAiStatus(
       'warning',
       `🟡 ${reviewCount} resposta${reviewCount===1?'':'s'} com baixa confiança. Confira os itens marcados como REVISAR antes de aplicar os pontos.`
+    );
+  } else if(reviewCount>0 && preserveAiStatus && Object.keys(aiResults).length){
+    setAiStatus(
+      'warning',
+      `🟡 ${reviewCount} resposta${reviewCount===1?'':'s'} realmente ficou${reviewCount===1?'':'ram'} com baixa confiança. Revise somente ${reviewCount===1?'este item':'estes itens'}.`
     );
   }
 }
@@ -420,7 +496,7 @@ async function persistPreview(){
 
 qs('#recalcReview').addEventListener('click',()=>{
   reviewBuiltForRound=null;
-  runAiReview();
+  queueAiReview(0);
 });
 
 qs('#finishReview').addEventListener('click',async()=>{
