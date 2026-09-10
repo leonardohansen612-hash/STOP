@@ -1,6 +1,23 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
+  <script>
+    // Self-healing boot da PRIMEIRA entrada.
+    // Em alguns celulares o primeiro carregamento da página fica com a conexão
+    // realtime presa até um refresh manual. Como esse comportamento é 100%
+    // reproduzível, fazemos exatamente um reload controlado antes da interface
+    // aparecer. Depois disso, nenhuma rodada recarrega a página.
+    (() => {
+      try {
+        const needsBoot = sessionStorage.getItem('texStopNeedsFirstBoot') === '1';
+        const params = new URLSearchParams(location.search);
+        if (needsBoot && !params.has('booted')) {
+          sessionStorage.setItem('texStopNeedsFirstBoot','0');
+          location.replace(`game.html?booted=${Date.now()}`);
+        }
+      } catch (_) {}
+    })();
+  </script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#12081f">
@@ -100,6 +117,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/player.js?v=20260910-6"></script>
+  <script type="module" src="js/player.js?v=20260910-9"></script>
 </body>
 </html>
