@@ -17,6 +17,31 @@ let autoReviewTimer=null;
 let autoFinalizeRunning=false;
 let aiFailureCycles=0;
 let historyRows=[];
+let timeoutWatch=null;
+let timeoutClosing=false;
+
+async function enforceRoundTimeout(){
+  if(timeoutClosing || !game || game.status!=='playing' || !game.endsAt) return;
+  const end=game.endsAt?.toMillis?game.endsAt.toMillis():new Date(game.endsAt).getTime();
+  if(!Number.isFinite(end) || Date.now()<end) return;
+
+  timeoutClosing=true;
+  try{
+    await updateDoc(gameRef,{
+      status:'stopped',
+      stopById:null,
+      stopByName:'TEMPO ESGOTADO',
+      stopAt:serverTimestamp()
+    });
+  }catch(e){
+    console.error('Falha no encerramento automático:',e);
+  }finally{
+    setTimeout(()=>{ timeoutClosing=false; },500);
+  }
+}
+
+timeoutWatch=setInterval(enforceRoundTimeout,250);
+
 
 const initialGameSnap=await getDoc(gameRef);
 if(initialGameSnap.exists()){

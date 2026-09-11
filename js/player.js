@@ -272,7 +272,9 @@ stopBtn.addEventListener('click',async()=>{
     return;
   }
 
-  await saveAnswers();
+  // STOP primeiro: não fica esperando gravação de respostas para encerrar a rodada.
+  // As respostas já são salvas durante a digitação; fazemos um último save em paralelo.
+  saveAnswers();
   await requestStop(teamName);
 });
 
@@ -287,7 +289,9 @@ function tick(){
   if(ms<=0 && game.status==='playing'){
     // Ao zerar, salva as respostas parciais e encerra a rodada automaticamente.
     // A transação em requestStop impede encerramento duplicado.
-    saveAnswers().finally(()=>requestStop('TEMPO'));
+    // Ao zerar, encerra imediatamente e salva o que houver em paralelo.
+    saveAnswers();
+    requestStop('TEMPO');
   }
 }
 
@@ -300,21 +304,20 @@ async function requestStop(by){
     }
   }
 
+  // Trava local imediatamente para impedir clique duplo.
+  stopBtn.disabled=true;
+
   try{
-    await runTransaction(db,async tx=>{
-      const snap=await tx.get(gameRef);
-      if(!snap.exists()) return;
-      const d=snap.data();
-      if(d.status!=='playing') return;
-      tx.update(gameRef,{
-        status:'stopped',
-        stopById:by==='TEMPO'?null:teamId,
-        stopByName:by==='TEMPO'?'TEMPO ESGOTADO':by,
-        stopAt:serverTimestamp()
-      });
+    await updateDoc(gameRef,{
+      status:'stopped',
+      stopById:by==='TEMPO'?null:teamId,
+      stopByName:by==='TEMPO'?'TEMPO ESGOTADO':by,
+      stopAt:serverTimestamp()
     });
+    await forceGameSync();
   }catch(e){
-    console.error(e);
+    console.error('Falha ao encerrar rodada:',e);
+    stopBtn.disabled=false;
   }
 }
 
