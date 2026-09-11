@@ -181,6 +181,7 @@ function renderCategory(){
   backBtn.hidden=currentCategoryIndex===0;
   nextBtn.hidden=isLast;
   stopBtn.hidden=!isLast;
+  updateStopAvailability();
 
   setTimeout(()=>answerInput.focus(),0);
 }
@@ -191,6 +192,30 @@ function captureCurrentAnswer(){
   if(cat) answers[cat]=answerInput.value;
 }
 
+function missingAnswers(){
+  captureCurrentAnswer();
+  const cats=game?.categories||[];
+  return cats.filter(cat=>!String(answers[cat]||'').trim());
+}
+
+function updateStopAvailability(){
+  const cats=game?.categories||[];
+  if(!cats.length || stopBtn.hidden) return;
+
+  const missing=missingAnswers();
+  stopBtn.disabled=missing.length>0;
+
+  if(missing.length){
+    stopBtn.textContent=`🛑 FALTA${missing.length>1?'M':''} ${missing.length} RESPOSTA${missing.length>1?'S':''}`;
+    stopBtn.title=`Complete: ${missing.join(', ')}`;
+    stopBtn.setAttribute('aria-disabled','true');
+  }else{
+    stopBtn.textContent='🛑 STOP!';
+    stopBtn.title='Todas as respostas preenchidas. Pode dar STOP.';
+    stopBtn.removeAttribute('aria-disabled');
+  }
+}
+
 function queueSave(){
   clearTimeout(saveTimer);
   saveTimer=setTimeout(saveAnswers,150);
@@ -198,6 +223,7 @@ function queueSave(){
 
 answerInput.addEventListener('input',()=>{
   captureCurrentAnswer();
+  updateStopAvailability();
   queueSave();
 });
 
@@ -238,6 +264,14 @@ async function saveAnswers(){
 }
 
 stopBtn.addEventListener('click',async()=>{
+  const missing=missingAnswers();
+  updateStopAvailability();
+
+  if(missing.length){
+    alert(`Você precisa responder todas as categorias antes de dar STOP.\n\nFalta: ${missing.join(', ')}`);
+    return;
+  }
+
   await saveAnswers();
   await requestStop(teamName);
 });
@@ -254,6 +288,14 @@ function tick(){
 }
 
 async function requestStop(by){
+  if(by!=='TEMPO'){
+    const missing=missingAnswers();
+    if(missing.length){
+      updateStopAvailability();
+      return;
+    }
+  }
+
   try{
     await runTransaction(db,async tx=>{
       const snap=await tx.get(gameRef);
