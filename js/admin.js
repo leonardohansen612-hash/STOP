@@ -1,5 +1,5 @@
 import {
-  db,gameRef,doc,getDoc,setDoc,updateDoc,onSnapshot,collection,serverTimestamp,writeBatch,runTransaction
+  db,gameRef,doc,getDoc,setDoc,setDoc,updateDoc,onSnapshot,collection,serverTimestamp,writeBatch,runTransaction
 } from './firebase.js?v=20260910-6';
 import {qs,esc,norm,randomLetter,DEFAULT_CATEGORIES} from './common.js?v=20260910-6';
 
@@ -17,30 +17,35 @@ let autoReviewTimer=null;
 let autoFinalizeRunning=false;
 let aiFailureCycles=0;
 let historyRows=[];
-let timeoutWatch=null;
-let timeoutClosing=false;
 
-async function enforceRoundTimeout(){
-  if(timeoutClosing || !game || game.status!=='playing' || !game.endsAt) return;
-  const end=game.endsAt?.toMillis?game.endsAt.toMillis():new Date(game.endsAt).getTime();
+let timeoutCloseRunning=false;
+
+async function enforceTimeoutFromAdmin(){
+  if(timeoutCloseRunning || !game || game.status!=='playing' || !game.endsAt) return;
+  const end=game.endsAt?.toMillis ? game.endsAt.toMillis() : Number(game.endsAt);
   if(!Number.isFinite(end) || Date.now()<end) return;
 
-  timeoutClosing=true;
+  timeoutCloseRunning=true;
   try{
-    await updateDoc(gameRef,{
-      status:'stopped',
-      stopById:null,
-      stopByName:'TEMPO ESGOTADO',
-      stopAt:serverTimestamp()
+    await runTransaction(db,async tx=>{
+      const snap=await tx.get(gameRef);
+      if(!snap.exists()) return;
+      const d=snap.data();
+      if(d.status!=='playing') return;
+      tx.update(gameRef,{
+        status:'stopped',
+        stopById:null,
+        stopByName:'TEMPO ESGOTADO',
+        stopAt:serverTimestamp()
+      });
     });
   }catch(e){
-    console.error('Falha no encerramento automático:',e);
+    console.error('Falha ao encerrar por tempo:',e);
   }finally{
-    setTimeout(()=>{ timeoutClosing=false; },500);
+    setTimeout(()=>{timeoutCloseRunning=false},500);
   }
 }
-
-timeoutWatch=setInterval(enforceRoundTimeout,250);
+setInterval(enforceTimeoutFromAdmin,250);
 
 
 const initialGameSnap=await getDoc(gameRef);
@@ -666,6 +671,58 @@ qs('#recalcReview').addEventListener('click',()=>{
   queueAiReview(0);
 });
 
+
+async function saveAuditSnapshotNonBlocking(currentRound,totals){
+  try{
+    const currentGame=game||{};
+    const startSeconds=Number(currentGame.startedAt?.seconds||0);
+    const startNanos=Number(currentGame.startedAt?.nanoseconds||0);
+    const historyId=`round-${currentRound}-${startSeconds}-${startNanos}`;
+    const historyRef=doc(db,'games',gameRef.id,'history',historyId);
+
+    const historyTeams=teams.map(t=>{
+      const roundPoints=Number(totals[t.id]||0);
+      return {
+        id:t.id,
+        name:t.name||'Equipe',
+        roundPoints,
+        totalBefore:Number(t.score||0),
+        totalAfter:Number(t.score||0)+roundPoints,
+        answers:(currentGame.categories||[]).map(cat=>{
+          const answer=t.round===currentRound?(t.answers?.[cat]||''):'';
+          const key=`${t.id}|${cat}`;
+          const ai=aiResults[key]||null;
+          const base=baseCheck(answer);
+          return {
+            category:cat,
+            answer,
+            points:Number(scoresDraft[key]||0),
+            aiEvaluated:!!ai,
+            aiValid:ai?!!ai.valid:null,
+            aiConfidence:ai?Number(ai.confidence||0):null,
+            aiReason:ai?.reason||null,
+            baseReason:!base.eligible?base.reason:null
+          };
+        })
+      };
+    });
+
+    await setDoc(historyRef,{
+      round:currentRound,
+      letter:currentGame.letter||null,
+      categories:currentGame.categories||[],
+      stopByName:currentGame.stopByName||null,
+      stopById:currentGame.stopById||null,
+      startedAt:currentGame.startedAt||null,
+      savedAt:serverTimestamp(),
+      teams:historyTeams
+    },{merge:true});
+  }catch(e){
+    // Auditoria NUNCA pode impedir placar, TV ou próxima rodada.
+    console.warn('Auditoria não salva; pontuação preservada.',e);
+  }
+}
+
 async function applyReviewScores({automatic=false}={}){
   if(autoFinalizeRunning) return;
   if(game.status!=='review') return;
@@ -696,55 +753,6 @@ async function applyReviewScores({automatic=false}={}){
         teamReads.push({t,ref,snap});
       }
 
-      // Guarda a rodada completa para consulta posterior.
-      // O horário de início entra no ID para não sobrescrever "Rodada 1"
-      // de outro dia ou após um reset de pontos.
-      const startSeconds=Number(current.startedAt?.seconds||0);
-      const startNanos=Number(current.startedAt?.nanoseconds||0);
-      const historyId=`round-${currentRound}-${startSeconds}-${startNanos}`;
-      const historyRef=doc(db,'games',gameRef.id,'history',historyId);
-
-      const historyTeams=teamReads.map(({t,snap})=>{
-        const currentScore=snap.exists()?Number(snap.data().score||0):Number(t.score||0);
-        const roundPoints=Number(totals[t.id]||0);
-
-        return {
-          id:t.id,
-          name:t.name||'Equipe',
-          roundPoints,
-          totalBefore:currentScore,
-          totalAfter:currentScore+roundPoints,
-          answers:(current.categories||game.categories||[]).map(cat=>{
-            const answer=t.round===currentRound?(t.answers?.[cat]||''):'';
-            const key=`${t.id}|${cat}`;
-            const ai=aiResults[key]||null;
-            const base=baseCheck(answer);
-
-            return {
-              category:cat,
-              answer,
-              points:Number(scoresDraft[key]||0),
-              aiEvaluated:!!ai,
-              aiValid:ai?!!ai.valid:null,
-              aiConfidence:ai?Number(ai.confidence||0):null,
-              aiReason:ai?.reason||null,
-              baseReason:!base.eligible?base.reason:null
-            };
-          })
-        };
-      });
-
-      tx.set(historyRef,{
-        round:currentRound,
-        letter:current.letter||game.letter||null,
-        categories:current.categories||game.categories||[],
-        stopByName:current.stopByName||game.stopByName||null,
-        stopById:current.stopById||game.stopById||null,
-        startedAt:current.startedAt||null,
-        savedAt:serverTimestamp(),
-        teams:historyTeams
-      });
-
       tx.update(gameRef,{
         scoredRound:currentRound,
         reviewScores:scoresDraft,
@@ -766,6 +774,8 @@ async function applyReviewScores({automatic=false}={}){
       });
     });
 
+    // O placar já foi aplicado. Auditoria é secundária e não bloqueia o jogo.
+    saveAuditSnapshotNonBlocking(currentRound,totals);
     clearReview();
   }catch(err){
     console.error(err);
