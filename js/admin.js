@@ -267,9 +267,9 @@ function queueAutomaticReview(round){
       });
     }catch(err){
       console.error('Falha ao iniciar correção automática.',err);
-      setTimeout(()=>queueAutomaticReview(round),1200);
+      setTimeout(()=>queueAutomaticReview(round),1000);
     }
-  },700);
+  },1500);
 }
 
 qs('#reset').addEventListener('click',async()=>{
