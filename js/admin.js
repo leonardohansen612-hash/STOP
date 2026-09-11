@@ -1,5 +1,5 @@
 import {
-  db,gameRef,doc,getDoc,setDoc,setDoc,updateDoc,onSnapshot,collection,serverTimestamp,writeBatch,runTransaction
+  db,gameRef,doc,getDoc,setDoc,updateDoc,onSnapshot,collection,serverTimestamp,writeBatch,runTransaction
 } from './firebase.js?v=20260910-6';
 import {qs,esc,norm,randomLetter,DEFAULT_CATEGORIES} from './common.js?v=20260910-6';
 
