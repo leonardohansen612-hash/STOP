@@ -18,36 +18,6 @@ let autoFinalizeRunning=false;
 let aiFailureCycles=0;
 let historyRows=[];
 
-let timeoutCloseRunning=false;
-
-async function enforceTimeoutFromAdmin(){
-  if(timeoutCloseRunning || !game || game.status!=='playing' || !game.endsAt) return;
-  const end=game.endsAt?.toMillis ? game.endsAt.toMillis() : Number(game.endsAt);
-  if(!Number.isFinite(end) || Date.now()<end) return;
-
-  timeoutCloseRunning=true;
-  try{
-    await runTransaction(db,async tx=>{
-      const snap=await tx.get(gameRef);
-      if(!snap.exists()) return;
-      const d=snap.data();
-      if(d.status!=='playing') return;
-      tx.update(gameRef,{
-        status:'stopped',
-        stopById:null,
-        stopByName:'TEMPO ESGOTADO',
-        stopAt:serverTimestamp()
-      });
-    });
-  }catch(e){
-    console.error('Falha ao encerrar por tempo:',e);
-  }finally{
-    setTimeout(()=>{timeoutCloseRunning=false},500);
-  }
-}
-setInterval(enforceTimeoutFromAdmin,250);
-
-
 const initialGameSnap=await getDoc(gameRef);
 if(initialGameSnap.exists()){
   game=initialGameSnap.data();
@@ -60,9 +30,46 @@ if(!initialGameSnap.exists()){
     categories:DEFAULT_CATEGORIES,
     createdAt:serverTimestamp()
   });
+
 }else if(!Array.isArray(initialGameSnap.data().usedLetters)){
   await updateDoc(gameRef,{usedLetters:[]});
 }
+
+// Segurança do cronômetro: o Admin também encerra a rodada ao chegar em 00:00.
+// Usa a mesma transação/status que o STOP normal, sem alterar o fluxo STOP ->
+// REVIEW -> IA -> PONTOS -> LOBBY já existente.
+let timeoutWatchRunning=false;
+setInterval(async()=>{
+  try{
+    if(timeoutWatchRunning || !game || game.status!=='playing' || !game.endsAt) return;
+    const end=game.endsAt?.toMillis ? game.endsAt.toMillis() : Number(game.endsAt);
+    if(!Number.isFinite(end) || Date.now()<end) return;
+
+    timeoutWatchRunning=true;
+    await runTransaction(db,async tx=>{
+      const snap=await tx.get(gameRef);
+      if(!snap.exists()) return;
+      const current=snap.data();
+      if(current.status!=='playing') return;
+
+      const currentEnd=current.endsAt?.toMillis
+        ? current.endsAt.toMillis()
+        : Number(current.endsAt);
+      if(!Number.isFinite(currentEnd) || Date.now()<currentEnd) return;
+
+      tx.update(gameRef,{
+        status:'stopped',
+        stopById:null,
+        stopByName:'TEMPO ESGOTADO',
+        stopAt:serverTimestamp()
+      });
+    });
+  }catch(e){
+    console.error('Erro no encerramento automático por tempo:',e);
+  }finally{
+    timeoutWatchRunning=false;
+  }
+},500);
 
 
 // ===== RESPOSTAS / AUDITORIA =====
@@ -267,9 +274,9 @@ function queueAutomaticReview(round){
       });
     }catch(err){
       console.error('Falha ao iniciar correção automática.',err);
-      setTimeout(()=>queueAutomaticReview(round),1000);
+      setTimeout(()=>queueAutomaticReview(round),1200);
     }
-  },1500);
+  },700);
 }
 
 qs('#reset').addEventListener('click',async()=>{
@@ -671,58 +678,6 @@ qs('#recalcReview').addEventListener('click',()=>{
   queueAiReview(0);
 });
 
-
-async function saveAuditSnapshotNonBlocking(currentRound,totals){
-  try{
-    const currentGame=game||{};
-    const startSeconds=Number(currentGame.startedAt?.seconds||0);
-    const startNanos=Number(currentGame.startedAt?.nanoseconds||0);
-    const historyId=`round-${currentRound}-${startSeconds}-${startNanos}`;
-    const historyRef=doc(db,'games',gameRef.id,'history',historyId);
-
-    const historyTeams=teams.map(t=>{
-      const roundPoints=Number(totals[t.id]||0);
-      return {
-        id:t.id,
-        name:t.name||'Equipe',
-        roundPoints,
-        totalBefore:Number(t.score||0),
-        totalAfter:Number(t.score||0)+roundPoints,
-        answers:(currentGame.categories||[]).map(cat=>{
-          const answer=t.round===currentRound?(t.answers?.[cat]||''):'';
-          const key=`${t.id}|${cat}`;
-          const ai=aiResults[key]||null;
-          const base=baseCheck(answer);
-          return {
-            category:cat,
-            answer,
-            points:Number(scoresDraft[key]||0),
-            aiEvaluated:!!ai,
-            aiValid:ai?!!ai.valid:null,
-            aiConfidence:ai?Number(ai.confidence||0):null,
-            aiReason:ai?.reason||null,
-            baseReason:!base.eligible?base.reason:null
-          };
-        })
-      };
-    });
-
-    await setDoc(historyRef,{
-      round:currentRound,
-      letter:currentGame.letter||null,
-      categories:currentGame.categories||[],
-      stopByName:currentGame.stopByName||null,
-      stopById:currentGame.stopById||null,
-      startedAt:currentGame.startedAt||null,
-      savedAt:serverTimestamp(),
-      teams:historyTeams
-    },{merge:true});
-  }catch(e){
-    // Auditoria NUNCA pode impedir placar, TV ou próxima rodada.
-    console.warn('Auditoria não salva; pontuação preservada.',e);
-  }
-}
-
 async function applyReviewScores({automatic=false}={}){
   if(autoFinalizeRunning) return;
   if(game.status!=='review') return;
@@ -753,6 +708,55 @@ async function applyReviewScores({automatic=false}={}){
         teamReads.push({t,ref,snap});
       }
 
+      // Guarda a rodada completa para consulta posterior.
+      // O horário de início entra no ID para não sobrescrever "Rodada 1"
+      // de outro dia ou após um reset de pontos.
+      const startSeconds=Number(current.startedAt?.seconds||0);
+      const startNanos=Number(current.startedAt?.nanoseconds||0);
+      const historyId=`round-${currentRound}-${startSeconds}-${startNanos}`;
+      const historyRef=doc(db,'games',gameRef.id,'history',historyId);
+
+      const historyTeams=teamReads.map(({t,snap})=>{
+        const currentScore=snap.exists()?Number(snap.data().score||0):Number(t.score||0);
+        const roundPoints=Number(totals[t.id]||0);
+
+        return {
+          id:t.id,
+          name:t.name||'Equipe',
+          roundPoints,
+          totalBefore:currentScore,
+          totalAfter:currentScore+roundPoints,
+          answers:(current.categories||game.categories||[]).map(cat=>{
+            const answer=t.round===currentRound?(t.answers?.[cat]||''):'';
+            const key=`${t.id}|${cat}`;
+            const ai=aiResults[key]||null;
+            const base=baseCheck(answer);
+
+            return {
+              category:cat,
+              answer,
+              points:Number(scoresDraft[key]||0),
+              aiEvaluated:!!ai,
+              aiValid:ai?!!ai.valid:null,
+              aiConfidence:ai?Number(ai.confidence||0):null,
+              aiReason:ai?.reason||null,
+              baseReason:!base.eligible?base.reason:null
+            };
+          })
+        };
+      });
+
+      tx.set(historyRef,{
+        round:currentRound,
+        letter:current.letter||game.letter||null,
+        categories:current.categories||game.categories||[],
+        stopByName:current.stopByName||game.stopByName||null,
+        stopById:current.stopById||game.stopById||null,
+        startedAt:current.startedAt||null,
+        savedAt:serverTimestamp(),
+        teams:historyTeams
+      });
+
       tx.update(gameRef,{
         scoredRound:currentRound,
         reviewScores:scoresDraft,
@@ -774,8 +778,6 @@ async function applyReviewScores({automatic=false}={}){
       });
     });
 
-    // O placar já foi aplicado. Auditoria é secundária e não bloqueia o jogo.
-    saveAuditSnapshotNonBlocking(currentRound,totals);
     clearReview();
   }catch(err){
     console.error(err);

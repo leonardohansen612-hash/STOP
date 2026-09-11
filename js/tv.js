@@ -205,7 +205,9 @@ function render(){
   qs('#roundBadge').textContent=`RODADA ${game?.round||0}`;
 
   qs('#lobby').hidden=status!=='lobby';
-  qs('#playing').hidden=status!=='playing';
+  // Durante STOP mantém o quadro da rodada visível atrás do overlay.
+  // Assim nunca existe uma tela preta entre STOP e CORRIGINDO.
+  qs('#playing').hidden=!(status==='playing' || status==='stopped');
   qs('#review').hidden=status!=='review';
 
   const teamCount=qs('#teamCount');
@@ -220,14 +222,22 @@ function render(){
   renderRankCards('#rankCards');
   renderRankCards('#rankCardsPlaying');
 
-  if(status==='playing'){
+  if(status==='playing' || status==='stopped'){
     qs('#letter').textContent=game.letter||'?';
     qs('#cats').innerHTML=(game.categories||[]).map((c,i)=>`
       <div class="tv-cat"><span>${i+1}</span>${esc(c)}</div>
     `).join('');
     clearInterval(timerInt);
-    tick();
-    timerInt=setInterval(tick,200);
+    if(status==='playing'){
+      tick();
+      timerInt=setInterval(tick,200);
+    }else{
+      qs('#timer').textContent='00:00';
+      const card=document.querySelector('.tv-timer-card');
+      card?.classList.add('timer-danger');
+      const bar=qs('#timeProgress');
+      if(bar) bar.style.transform='scaleX(0)';
+    }
   }else{
     clearInterval(timerInt);
     lastSecondBeep=null;

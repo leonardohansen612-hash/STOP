@@ -15,8 +15,6 @@ let saveTimer=null;
 let flashedRound=0;
 let syncFallbackInt=null;
 let lastRealtimeGameAt=0;
-let deadlineTimer=null;
-let timeoutStopInFlight=false;
 
 const waiting=qs('#waiting');
 const gameEl=qs('#game');
@@ -115,8 +113,6 @@ function render(){
     stopped.hidden=true;
     setStatus(game?.status==='review'?'Correção':'Aguardando');
     clearInterval(timerInt);
-    if(deadlineTimer) clearTimeout(deadlineTimer);
-    deadlineTimer=null;
     return;
   }
 
@@ -135,8 +131,6 @@ function render(){
     stopped.hidden=false;
     setStatus('STOP');
     clearInterval(timerInt);
-    if(deadlineTimer) clearTimeout(deadlineTimer);
-    deadlineTimer=null;
     qs('#stopMessage').textContent=`${game.stopByName||'Uma equipe'} pediu STOP.`;
     showFlash(game.stopByName||'');
   }
@@ -155,21 +149,8 @@ function renderRound(){
   renderCategory();
 
   clearInterval(timerInt);
-  if(deadlineTimer) clearTimeout(deadlineTimer);
-  timeoutStopInFlight=false;
   tick();
   timerInt=setInterval(tick,250);
-
-  // Segundo mecanismo de segurança: o fim da rodada não depende apenas do
-  // intervalo de 250 ms. Em celulares com throttling, este timeout dispara
-  // assim que o prazo chega e fecha a rodada no Firestore.
-  if(game.endsAt){
-    const end=game.endsAt.toMillis?game.endsAt.toMillis():Number(game.endsAt);
-    const wait=Math.max(0,end-Date.now()+100);
-    deadlineTimer=setTimeout(()=>{
-      if(game?.status==='playing') finishByTimeout();
-    },wait);
-  }
 }
 
 function renderCategory(){
@@ -291,24 +272,11 @@ stopBtn.addEventListener('click',async()=>{
     return;
   }
 
-  // STOP manual é prioritário: não fica preso esperando o autosave.
-  saveAnswers();
+  // O autosave já ocorre durante a digitação. Não deixe o último save
+  // atrasar o STOP.
+  saveAnswers().catch(()=>{});
   await requestStop(teamName);
 });
-
-async function finishByTimeout(){
-  if(timeoutStopInFlight || !game || game.status!=='playing') return;
-  timeoutStopInFlight=true;
-  try{
-    // Tenta salvar a última resposta, mas nunca deixa isso impedir o STOP.
-    await Promise.race([
-      saveAnswers(),
-      new Promise(resolve=>setTimeout(resolve,800))
-    ]);
-  }catch(_){}
-  await requestStop('TEMPO');
-  timeoutStopInFlight=false;
-}
 
 function tick(){
   if(!game?.endsAt){
@@ -318,7 +286,7 @@ function tick(){
   const end=game.endsAt.toMillis?game.endsAt.toMillis():game.endsAt;
   const ms=end-Date.now();
   qs('#timer').textContent=fmtTime(ms);
-  if(ms<=0 && game.status==='playing') finishByTimeout();
+  if(ms<=0 && game.status==='playing') requestStop('TEMPO');
 }
 
 async function requestStop(by){
@@ -344,11 +312,7 @@ async function requestStop(by){
       });
     });
   }catch(e){
-    console.error('Falha ao registrar STOP:',e);
-    // Se a rede caiu exatamente no instante do STOP, tenta novamente.
-    setTimeout(()=>{
-      if(game?.status==='playing') requestStop(by);
-    },700);
+    console.error(e);
   }
 }
 
