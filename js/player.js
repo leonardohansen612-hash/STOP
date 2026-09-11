@@ -284,7 +284,11 @@ function tick(){
   const end=game.endsAt.toMillis?game.endsAt.toMillis():game.endsAt;
   const ms=end-Date.now();
   qs('#timer').textContent=fmtTime(ms);
-  if(ms<=0 && game.status==='playing') requestStop('TEMPO');
+  if(ms<=0 && game.status==='playing'){
+    // Ao zerar, salva as respostas parciais e encerra a rodada automaticamente.
+    // A transação em requestStop impede encerramento duplicado.
+    saveAnswers().finally(()=>requestStop('TEMPO'));
+  }
 }
 
 async function requestStop(by){
