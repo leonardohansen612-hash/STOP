@@ -71,6 +71,68 @@ setInterval(async()=>{
   }
 },500);
 
+// CONTROLADOR AUTORITATIVO: não depende do cache/local state do Admin.
+// A cada segundo lê o game diretamente do servidor e garante a máquina de estados:
+// PLAYING + tempo vencido -> STOPPED -> REVIEW -> IA -> PONTOS -> LOBBY.
+let serverControllerBusy=false;
+setInterval(async()=>{
+  if(serverControllerBusy) return;
+  serverControllerBusy=true;
+  try{
+    const snap=await getDoc(gameRef);
+    if(!snap.exists()) return;
+    const d=snap.data();
+    const round=Number(d.round||0);
+    if(round<=0) return;
+
+    // 1) Tempo acabou: encerra a rodada diretamente no servidor.
+    if(d.status==='playing' && d.endsAt){
+      const end=d.endsAt?.toMillis ? d.endsAt.toMillis() : Number(d.endsAt);
+      if(Number.isFinite(end) && Date.now()>=end){
+        await runTransaction(db,async tx=>{
+          const fresh=await tx.get(gameRef);
+          if(!fresh.exists()) return;
+          const g=fresh.data();
+          if(g.status!=='playing') return;
+          const e=g.endsAt?.toMillis ? g.endsAt.toMillis() : Number(g.endsAt);
+          if(Number.isFinite(e) && Date.now()>=e){
+            tx.update(gameRef,{
+              status:'stopped',
+              stopById:null,
+              stopByName:'TEMPO ESGOTADO',
+              stopAt:serverTimestamp()
+            });
+          }
+        });
+        return;
+      }
+    }
+
+    // 2) STOP não pode ficar parado: transforma em REVIEW.
+    if(d.status==='stopped' && Number(d.scoredRound||0)!==round){
+      await runTransaction(db,async tx=>{
+        const fresh=await tx.get(gameRef);
+        if(!fresh.exists()) return;
+        const g=fresh.data();
+        if(g.status==='stopped' && Number(g.round||0)===round && Number(g.scoredRound||0)!==round){
+          tx.update(gameRef,{status:'review'});
+        }
+      });
+      return;
+    }
+
+    // 3) REVIEW é entregue ao mesmo motor de IA já existente.
+    if(d.status==='review' && Number(d.scoredRound||0)!==round){
+      if(game.status!=='review') game=d;
+      queueAiReview(0);
+    }
+  }catch(e){
+    console.error('Controlador de recuperação:',e);
+  }finally{
+    serverControllerBusy=false;
+  }
+},1000);
+
 
 // ===== RESPOSTAS / AUDITORIA =====
 // Esta coleção é consumida apenas pelo painel Admin.
