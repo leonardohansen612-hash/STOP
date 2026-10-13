@@ -12,6 +12,8 @@ let answers={};
 let currentCategoryIndex=0;
 let renderedRound=null;
 let saveTimer=null;
+let saveChain=Promise.resolve();
+let stopping=false;
 let flashedRound=0;
 let syncFallbackInt=null;
 let lastRealtimeGameAt=0;
@@ -203,7 +205,7 @@ function updateStopAvailability(){
   if(!cats.length || stopBtn.hidden) return;
 
   const missing=missingAnswers();
-  stopBtn.disabled=missing.length>0;
+  stopBtn.disabled=missing.length>0 || stopping;
 
   if(missing.length){
     stopBtn.textContent=`🛑 FALTA${missing.length>1?'M':''} ${missing.length} RESPOSTA${missing.length>1?'S':''}`;
@@ -256,11 +258,15 @@ backBtn.addEventListener('click',goBack);
 async function saveAnswers(){
   if(!game || game.status!=='playing') return;
   captureCurrentAnswer();
-  await updateDoc(doc(db,'games',gameRef.id,'teams',teamId),{
-    answers,
-    round:game.round,
+  clearTimeout(saveTimer);
+  const snapshot={...answers};
+  const round=game.round;
+  saveChain=saveChain.catch(()=>{}).then(()=>updateDoc(doc(db,'games',gameRef.id,'teams',teamId),{
+    answers:snapshot,
+    round,
     updatedAt:serverTimestamp()
-  }).catch(()=>{});
+  }));
+  return saveChain;
 }
 
 stopBtn.addEventListener('click',async()=>{
@@ -272,10 +278,19 @@ stopBtn.addEventListener('click',async()=>{
     return;
   }
 
-  // O autosave já ocorre durante a digitação. Não deixe o último save
-  // atrasar o STOP.
-  saveAnswers().catch(()=>{});
-  await requestStop(teamName);
+  if(stopping) return;
+  stopping=true;
+  stopBtn.disabled=true;
+  try{
+    await saveAnswers();
+    await requestStop(teamName);
+  }catch(e){
+    console.error('Não foi possível salvar antes do STOP:',e);
+    alert('Não foi possível salvar suas respostas. Verifique a conexão e tente novamente.');
+  }finally{
+    stopping=false;
+    updateStopAvailability();
+  }
 });
 
 function tick(){

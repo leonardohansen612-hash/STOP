@@ -3,12 +3,13 @@ import {
 } from './firebase.js?v=20260910-6';
 import {qs,esc,norm,randomLetter,DEFAULT_CATEGORIES} from './common.js?v=20260910-6';
 
-const AI_CONFIDENCE_AUTO = 0.90; // exibido apenas como informação; a IA decide automaticamente
+const AI_CONFIDENCE_AUTO = 0.90; // abaixo deste limite o apresentador deve revisar
 
 let game={status:'lobby',round:0};
 let teams=[];
 let scoresDraft={};
 let aiResults={};
+let pendingReview=new Set();
 let reviewBuiltForRound=null;
 let teamsReady=false;
 let aiReviewRunning=false;
@@ -302,6 +303,7 @@ qs('#start').addEventListener('click',async()=>{
 
   reviewBuiltForRound=null;
   aiResults={};
+  pendingReview=new Set();
   scoresDraft={};
   aiFailureCycles=0;
 
@@ -548,7 +550,11 @@ async function runAiReview(){
     reviewBuiltForRound=game.round;
     buildReview({preserveAiStatus:true});
     await persistPreview();
-    await applyReviewScores({automatic:true});
+    if(pendingReview.size===0){
+      await applyReviewScores({automatic:true});
+    }else{
+      setAiStatus('warning',`🟡 ${pendingReview.size} resposta(s) duvidosa(s). O apresentador deve escolher a pontuação de cada uma antes de concluir.`);
+    }
 
   }catch(err){
     console.error(err);
@@ -601,20 +607,20 @@ function suggestedScore(team,cat,answer){
 
   const conf=Number(ai.confidence)||0;
 
-  // Modo automático: confiamos na decisão valid/invalid da IA mesmo quando
-  // a confiança informada pelo modelo é menor. A confiança fica só visível
-  // para auditoria, sem exigir intervenção do apresentador.
-  if(!ai.valid){
+  const repeated=duplicateCount(answer,cat)>1;
+  const uncertain=conf<AI_CONFIDENCE_AUTO || !ai.reason || ai.reason==='Sem justificativa da IA.';
+  if(uncertain){
     return {
-      score:0,
-      state:'invalid',
-      reason:`${ai.reason} • IA ${Math.round(conf*100)}%`,
+      score:ai.valid?(repeated?5:10):0,
+      state:'warning',
+      reason:`DÚVIDA: ${ai.reason} • confiança ${Math.round(conf*100)}%`,
       confidence:conf,
-      needsReview:false
+      needsReview:true
     };
   }
-
-  const repeated=duplicateCount(answer,cat)>1;
+  if(!ai.valid){
+    return {score:0,state:'invalid',reason:`${ai.reason} • IA ${Math.round(conf*100)}%`,confidence:conf,needsReview:false};
+  }
   return {
     score:repeated?5:10,
     state:repeated?'repeat':'valid',
@@ -629,6 +635,7 @@ function buildReview({preserveAiStatus=false}={}){
   const area=qs('#reviewArea');
 
   scoresDraft={};
+  pendingReview=new Set();
   let html='';
   let reviewCount=0;
 
@@ -645,7 +652,7 @@ function buildReview({preserveAiStatus=false}={}){
       const key=`${t.id}|${cat}`;
 
       scoresDraft[key]=s.score;
-      if(s.needsReview) reviewCount++;
+      if(s.needsReview){ reviewCount++; pendingReview.add(key); }
 
       const stateClass=
         s.state==='valid'?'auto-valid':
@@ -679,14 +686,18 @@ function buildReview({preserveAiStatus=false}={}){
 
   document.querySelectorAll('.scoreSel').forEach(sel=>{
     sel.addEventListener('change',()=>{
-      scoresDraft[`${sel.dataset.team}|${sel.dataset.cat}`]=Number(sel.value);
+      const key=`${sel.dataset.team}|${sel.dataset.cat}`;
+      scoresDraft[key]=Number(sel.value);
+      pendingReview.delete(key);
       sel.closest('.auto-review-row')?.classList.remove('needs-review');
       sel.closest('.auto-review-row')?.querySelector('.review-flag')?.remove();
       renderSummary();
+      updateReviewControls();
     });
   });
 
   renderSummary();
+  updateReviewControls();
 
   if(reviewCount>0 && !preserveAiStatus){
     setAiStatus(
@@ -699,6 +710,12 @@ function buildReview({preserveAiStatus=false}={}){
       `🟡 ${reviewCount} resposta${reviewCount===1?'':'s'} realmente ficou${reviewCount===1?'':'ram'} com baixa confiança. Revise somente ${reviewCount===1?'este item':'estes itens'}.`
     );
   }
+}
+
+function updateReviewControls(){
+  const btn=qs('#finishReview');
+  btn.disabled=pendingReview.size>0 || aiReviewRunning && reviewBuiltForRound!==game.round;
+  btn.title=pendingReview.size?`Faltam ${pendingReview.size} respostas para revisar`:'';
 }
 
 function calculatedTotals(){
@@ -747,6 +764,10 @@ qs('#recalcReview').addEventListener('click',()=>{
 
 async function applyReviewScores({automatic=false}={}){
   if(autoFinalizeRunning) return;
+  if(pendingReview.size){
+    setAiStatus('warning',`Revise as ${pendingReview.size} respostas marcadas antes de aplicar os pontos.`);
+    return;
+  }
   if(game.status!=='review') return;
 
   autoFinalizeRunning=true;
@@ -823,6 +844,7 @@ function setAiStatus(type,text){
 function clearReview(){
   reviewBuiltForRound=null;
   aiResults={};
+  pendingReview=new Set();
   scoresDraft={};
 
   qs('#finishReview').hidden=true;
