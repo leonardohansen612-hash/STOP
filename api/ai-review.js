@@ -92,7 +92,6 @@ Retorne exatamente um resultado para cada item recebido.
 
     const response=await client.responses.create({
       model,
-      reasoning:{effort:'low'},
       input:[
         {role:'system',content:instructions},
         {role:'user',content:JSON.stringify(payload)}
