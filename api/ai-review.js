@@ -43,7 +43,7 @@ export default async function aiReviewHandler(req,res){
     }
 
     const client=new OpenAI({apiKey});
-    const model=process.env.OPENAI_MODEL || 'gpt-5-mini';
+    const model=process.env.OPENAI_MODEL || 'gpt-5.6-luna';
 
     const instructions = `
 Você é o juiz de um jogo brasileiro de STOP/Adedonha.
