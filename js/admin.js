@@ -451,7 +451,7 @@ function queueAiReview(delay=0){
 }
 
 async function requestAiReview(items,attempt=1){
-  const r=await fetch(`https://stop-mo3s.onrender.com/api/ai-review?_=${Date.now()}`,{
+  const r=await fetch(`/api/ai-review?_=${Date.now()}`,{
     method:'POST',
     cache:'no-store',
     headers:{
