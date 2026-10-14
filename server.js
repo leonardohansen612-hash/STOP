@@ -34,6 +34,7 @@ app.get('/health', (_req,res)=>{
   res.status(200).json({
     ok:true,
     service:'tex-stop-ai',
+    version:'railway-fix-20261014-b',
     aiConfigured:Boolean(process.env.OPENAI_API_KEY),
     model:process.env.OPENAI_MODEL || 'gpt-4.1-mini'
   });
