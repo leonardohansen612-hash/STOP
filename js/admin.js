@@ -1,5 +1,5 @@
 import {
-  db,gameRef,doc,getDoc,setDoc,updateDoc,onSnapshot,collection,serverTimestamp,writeBatch,runTransaction
+  db,gameRef,doc,getDoc,getDocFromServer,setDoc,updateDoc,onSnapshot,collection,serverTimestamp,writeBatch,runTransaction
 } from './firebase.js?v=20260910-6';
 import {qs,esc,norm,randomLetter,DEFAULT_CATEGORIES} from './common.js?v=20260910-6';
 
@@ -80,7 +80,7 @@ setInterval(async()=>{
   if(serverControllerBusy) return;
   serverControllerBusy=true;
   try{
-    const snap=await getDoc(gameRef);
+    const snap=await getDocFromServer(gameRef);
     if(!snap.exists()) return;
     const d=snap.data();
     const round=Number(d.round||0);
@@ -451,7 +451,7 @@ function queueAiReview(delay=0){
 }
 
 async function requestAiReview(items,attempt=1){
-  const r=await fetch(`/api/ai-review?_=${Date.now()}`,{
+  const r=await fetch(`https://stop-mo3s.onrender.com/api/ai-review?_=${Date.now()}`,{
     method:'POST',
     cache:'no-store',
     headers:{
