@@ -21,7 +21,7 @@ export default async function aiReviewHandler(req,res){
     if(!apiKey){
       return res.status(503).json({
         ok:false,
-        error:'OPENAI_API_KEY não configurada no Render.'
+        error:'OPENAI_API_KEY não configurada no servidor.'
       });
     }
 
@@ -43,7 +43,7 @@ export default async function aiReviewHandler(req,res){
     }
 
     const client=new OpenAI({apiKey});
-    const model=process.env.OPENAI_MODEL || 'gpt-5.6-luna';
+    const model=process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 
     const instructions = `
 Você é o juiz de um jogo brasileiro de STOP/Adedonha.
