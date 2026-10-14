@@ -762,6 +762,45 @@ qs('#recalcReview').addEventListener('click',()=>{
   queueAiReview(0);
 });
 
+// Salva o histórico sem bloquear a aplicação dos pontos.
+// ID fixo por rodada evita registros duplicados em eventuais tentativas.
+function saveAuditSnapshotNonBlocking(round,totals){
+  try{
+    const audit={
+      round,
+      letter:game.letter||'',
+      stopByName:game.stopByName||'',
+      startedAt:game.startedAt||null,
+      savedAt:serverTimestamp(),
+      teams:teams.map(t=>({
+        id:t.id,
+        name:t.name||'Equipe',
+        roundPoints:Number(totals[t.id]||0),
+        totalAfter:Number(t.score||0)+Number(totals[t.id]||0),
+        answers:(game.categories||[]).map(category=>{
+          const answer=getRoundAnswer(t,category);
+          const key=`${t.id}|${category}`;
+          const ai=aiResults[key];
+          return {
+            category,answer,
+            points:Number(scoresDraft[key]||0),
+            aiEvaluated:!!ai,
+            aiValid:!!ai?.valid,
+            aiConfidence:ai?Number(ai.confidence||0):null,
+            aiReason:ai?.reason||'',
+            baseReason:baseCheck(answer).reason
+          };
+        })
+      }))
+    };
+    void setDoc(doc(historyCol,String(round)),audit).catch(err=>{
+      console.warn('Pontuação aplicada, mas não foi possível salvar o histórico:',err);
+    });
+  }catch(err){
+    console.warn('Pontuação aplicada, mas houve erro ao preparar o histórico:',err);
+  }
+}
+
 async function applyReviewScores({automatic=false}={}){
   if(autoFinalizeRunning) return;
   if(pendingReview.size){
