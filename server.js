@@ -12,6 +12,22 @@ const __dirname = path.dirname(__filename);
 app.disable('x-powered-by');
 app.use(express.json({ limit: '256kb' }));
 
+// Permite somente que a interface publicada no Render consulte a API.
+app.use('/api/ai-review', (req, res, next) => {
+  const allowedOrigin = 'https://stop-1-y9yy.onrender.com';
+  const origin = req.headers.origin;
+  if (origin === allowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control');
+  }
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(origin === allowedOrigin ? 204 : 403);
+  }
+  next();
+});
+
 app.post('/api/ai-review', aiReviewHandler);
 
 app.get('/health', (_req,res)=>{
